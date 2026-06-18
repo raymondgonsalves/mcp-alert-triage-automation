@@ -42,3 +42,28 @@ Sentinel Analytics (Defender portal, workspace `law-mcp-detection-lab`, scope co
 2. Timestamp probe — replay a small batch, inspect `TimeGenerated` (ingestion-time vs original April/May); apply DCR transform if needed.
 3. Full replay — verify rules **fire** AND group **one incident per session**.
 4. On green: begin Sprint 1 (walking skeleton: Automation Rule → playbook → Function reads SessionId, writes stub comment).
+
+---
+
+## 2026-06-18 11:13 — PAUSED mid-task: Rule 1 correction edits
+
+**Stopped while fixing Rule 1 (MCP Poisoned Tool Description Ingested).** Rule 1 is deployed live in Sentinel with grouping correct (`matchingMethod: Selected` + `groupByCustomDetails: [SessionId]`). Outstanding fixes on Rule 1 before it is clean:
+
+1. Custom detail key `TooName` -> `ToolName` (typo)
+2. Custom detail key `ToolDescript_Length` -> `ToolDescLength` (Sentinel custom-detail keys cap at 20 chars; `ToolDescriptionLength` is 21. Key abbreviated; value still maps to the full `ToolDescriptionLength` column.)
+3. Severity `Medium` -> `High`
+4. `alertDetailsOverride`: remove the literal `alertDisplayNameFormat:` / `alertDescriptionFormat:` prefixes that got pasted into the values; keep only the format string.
+
+**Next steps (dependency order):**
+1. Finish Rule 1 fixes above.
+2. Create Rules 2-4 (manual wizard, mirror corrected Rule 1). Use `ToolDescLength` consistently. Schedules: R2 15/15 High, R3 30/30 Medium, R4 5/5 High. Add SessionId as a custom detail BEFORE the grouping tab. R2/R3 depend on the `MCPToolNames` / `MCPToolDescriptions` watchlists existing in the workspace.
+3. Timestamp probe: replay a small batch, inspect `TimeGenerated` (ingestion-time vs original April/May); apply DCR transform if needed.
+4. Full replay: verify rules FIRE and group ONE INCIDENT PER SESSION.
+5. On green: begin Sprint 1 (walking skeleton).
+
+**Open doc threads (not blocking):**
+- Interface contract doc: reflect `ToolDescLength` abbreviation + note the 20-char custom-detail-key constraint.
+- Detection repo `DAILY_LOG.md`: add cross-reference line (commit `deadc95` grouping fix + "rules were never deployed live" finding).
+- Copy design spec + interface contract doc + diagrams into new repo `docs/`.
+
+**Key finding standing from earlier today:** the four detection rules were never deployed as live Scheduled analytics rules — only validated as KQL in the Logs blade. Standing them up live is the current Sprint 0 prerequisite (Rule 1 done, 3 to go).
