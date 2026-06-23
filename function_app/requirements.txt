@@ -1,0 +1,8 @@
+# Azure Functions Python worker
+azure-functions
+
+# Auth: DefaultAzureCredential (dev identity locally, managed identity in Azure)
+azure-identity
+
+# HTTP calls to the Sentinel REST API
+requests
