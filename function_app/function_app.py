@@ -1,6 +1,7 @@
 import azure.functions as func
 import json
 import logging
+import uuid
 
 import requests
 from azure.identity import DefaultAzureCredential
@@ -57,7 +58,7 @@ def triage(req: func.HttpRequest) -> func.HttpResponse:
     # The incident comments collection lives under the incident's ARM path.
     # A comment needs a unique name segment; use the SessionId for traceability.
     comment_url = (
-        f"{ARM_BASE}{incident_arm_id}/comments/skeleton-{session_id}"
+        f"{ARM_BASE}{incident_arm_id}/comments/skeleton-{uuid.uuid4().hex}"
         f"?api-version={API_VERSION}"
     )
 
