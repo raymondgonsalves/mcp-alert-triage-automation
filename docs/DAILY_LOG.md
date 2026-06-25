@@ -146,3 +146,26 @@ Sprint 1 is the pipeline plumbing only (Function App → managed identity → de
 - **Still to complete the full walking skeleton:** wire the Logic App playbook to call the deployed Function, and the Automation Rule to fire the playbook on new incidents — so it runs automatically, no manual curl. (Function proven callable directly; automatic triggering is the remaining link.)
 - The playbook must pass the function key when invoking the Function.
 - Then Sprint 2: deterministic session reconstruction (the Log Analytics Reader role starts earning its keep).
+
+---
+
+## 2026-06-24 22:40 — PAUSED: Sprint 1 step 3 (playbook wiring) about to start
+
+**Done today:** Sprint 1 walking skeleton core proven — deployed Azure Function writes incident comments as its managed identity (committed `9491f02`, `87c2b20`). Repo clean.
+
+**Resuming at:** wiring the Logic App playbook + Automation Rule so the Function fires automatically on new incidents (no manual curl).
+
+**Decision locked — auth approach:**
+- **Path A now:** build playbook with **function-key** auth to prove the trigger → playbook → Function → write-back chain fires automatically.
+- **GATE before publishing playbook to GitHub:** swap playbook→Function auth to **managed-identity-to-Function** (Azure AD / Easy Auth), remove the key. Reason: the function key is a secret; never commit a playbook ARM definition containing it. Keep the playbook cloud-only (do NOT export to repo) until after the managed-identity swap.
+
+**Next concrete step (portal):** Defender portal → Microsoft Sentinel → Configuration → Automation → Create → "Playbook with incident trigger". Name `pb-mcp-triage-skeleton`, RG `rg-sentinel-mcp-detection-lab`, region East US. Then add the action that calls the deployed Function (`func-mcp-triage-lab-rg`), passing incidentArmId + sessionId (+ function key for now). Then create the Automation Rule to fire the playbook on incidents from the four detection rules. Test by replaying an incident and watching the comment appear automatically.
+
+**Key facts for tomorrow:**
+- Function App: `func-mcp-triage-lab-rg`, invoke URL `https://func-mcp-triage-lab-rg.azurewebsites.net/api/triage` (auth_level=FUNCTION, needs key for now)
+- Managed identity principal: `e5c28c8b-3b63-4e44-883a-858b185ff63b` (has Sentinel Responder + Log Analytics Reader on workspace)
+- Test incident (Rule 4): GUID `71ca1ae3-e897-4176-b19c-b42a4c04c0d6`, SessionId `75682b09-de40-4138-9a37-358265f95b89`
+- Subscription `5faad216-...`, real home tenant `a3e85d53-...` (NOT the onmicrosoft.com guest dir — use the GUID for az login --tenant)
+- Verify comment writes via `az rest` GET on .../comments — the Defender portal Comments panel does NOT show API-written comments.
+
+**Other open doc threads (not blocking):** interface contract `ToolDescLength` note already in repo; project plan committed; triage-repo README status line + earlier 0622 log entry still minor-stale.
