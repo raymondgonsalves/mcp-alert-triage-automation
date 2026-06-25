@@ -108,3 +108,41 @@ Session opened with Sentinel showing **0 active rules** (detections existed only
 
 ### Next: Sprint 1 — walking skeleton
 Automation Rule → Logic App playbook → Azure Function (Python, managed identity) that reads SessionId off the incident and writes a stub comment back. Prove the auth / RBAC / write-back seam before any enrichment or scoring logic.
+
+---
+
+## 2026-06-24 — Sprint 1: walking skeleton — managed-identity write-back proven
+
+### What shipped
+The first pipeline link is live and verified: a deployed Azure Function authenticates to Microsoft Sentinel **as its own managed identity** (no credentials anywhere) and writes a comment back to an incident. This is the riskiest, most foundational capability in the whole pipeline — everything in later sprints just replaces the stub comment's body with real work.
+
+### Build order (back-to-front, so each link is independently testable)
+1. Scaffolded a Python v2 Azure Function (`function_app/`, HTTP trigger `triage`) that reads `incidentArmId` + `sessionId` from the POST body, authenticates via `DefaultAzureCredential`, and PUTs a stub comment to the incident via the ARM REST API.
+2. **Local test** — `func start` + curl to `localhost:7071`. Wrote a comment authored by **Raymond Gonsalves** (my `az login` identity). Verified via `az rest` GET (the Defender portal Comments panel does NOT surface API-written comments — a known quirk; use the REST read to verify).
+3. Provisioned cloud infrastructure: storage account `stmcptriagelabrg`, Function App `func-mcp-triage-lab-rg` (consumption plan, Python 3.12, Functions v4) **with a system-assigned managed identity** (`--assign-identity '[system]'`).
+4. Assigned the managed identity (principal `e5c28c8b-3b63-4e44-883a-858b185ff63b`) two roles, scoped to workspace `law-mcp-detection-lab`:
+   - **Microsoft Sentinel Responder** — write incident comments (used in Sprint 1)
+   - **Log Analytics Reader** — query `MCPProtocolLogs_CL` (NOT used yet; pre-provisioned for Sprint 2 enrichment)
+5. **Deployed** the code (`func azure functionapp publish`).
+6. **Deployed test** — curl to the `azurewebsites.net` URL (with function key). Comment authored by the **managed identity** (`objectId e5c28c8b-…`, `userPrincipalName: null`).
+
+### The proof
+`DefaultAzureCredential` is the same line of code in both environments — it resolves to my user identity locally and the managed identity in Azure, with zero code change. The decisive signal: the comment **author flipped from "Raymond Gonsalves" (local) to the managed identity (deployed)**. Same code, different identity, no credentials in code or config. That is the production-correct, credential-free auth path proven end to end.
+
+### Gotchas / scar-tissue lessons
+- **Provider registration masquerading as auth failure.** `Microsoft.Storage` was `NotRegistered` on the subscription (first time storage was used). Storage calls failed with a misleading `SubscriptionNotFound` error, which sent us chasing a tenant/login problem. Lesson: if `az account show` works but a resource-type call says "subscription not found," check the *resource provider* registration before assuming an auth issue. Fixed with `az provider register --namespace Microsoft.Storage --wait`.
+- **Tenant context confusion (side-quest).** The subscription's real home tenant is `a3e85d53-0605-4e15-8568-12acdaf34332`, NOT `gonsalvesraygmail.onmicrosoft.com` (the latter is a directory I'm a guest in). The guest-account split is the same root cause as the earlier Defender-portal "wrong tenant" redirect. For explicit `az login --tenant`, use the GUID `a3e85d53-…`.
+- **Comment-name collision.** Using `SessionId` as the comment *name* meant the deployed function (managed identity) tried to PUT to the same comment name my local test had already created — Sentinel blocked it: "Only the user that created the comment is allowed to edit it." Fix: unique comment name per invocation (`skeleton-{uuid.uuid4().hex}`); SessionId stays in the comment *body* for traceability. Correct design anyway — in production the pipeline comments many times per incident.
+- **Portal doesn't show API-written comments** in the incident Comments panel (only ones made via its own UI, until a deep refresh). Verify writes via the `az rest` GET on `.../comments`, not the portal. Relevant for the eventual demo.
+
+### Scope note
+Sprint 1 is the pipeline plumbing only (Function App → managed identity → deploy → write-back). The four detection rules that generate the incidents are Sprint 0 / the detection repo — a separate project in the arc.
+
+### SC-200 objectives covered
+- Create and configure Microsoft Sentinel playbooks (Azure Function response component; playbook wiring next)
+- Configure Microsoft Sentinel roles and permissions (managed-identity RBAC: Sentinel Responder, Log Analytics Reader)
+
+### Open / next
+- **Still to complete the full walking skeleton:** wire the Logic App playbook to call the deployed Function, and the Automation Rule to fire the playbook on new incidents — so it runs automatically, no manual curl. (Function proven callable directly; automatic triggering is the remaining link.)
+- The playbook must pass the function key when invoking the Function.
+- Then Sprint 2: deterministic session reconstruction (the Log Analytics Reader role starts earning its keep).
