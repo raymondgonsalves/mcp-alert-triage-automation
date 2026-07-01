@@ -169,3 +169,71 @@ Sprint 1 is the pipeline plumbing only (Function App → managed identity → de
 - Verify comment writes via `az rest` GET on .../comments — the Defender portal Comments panel does NOT show API-written comments.
 
 **Other open doc threads (not blocking):** interface contract `ToolDescLength` note already in repo; project plan committed; triage-repo README status line + earlier 0622 log entry still minor-stale.
+
+---
+
+## 2026-07-01 — MILESTONE: Sprint 1 walking skeleton COMPLETE (autonomous detect-to-respond chain proven)
+
+**Work span:** This milestone was built across multiple sessions with non-work days between them:
+- **2026-06-24** — Sprint 1 core: Azure Function deployed, managed-identity write-back proven (logged separately; commit `87c2b20`).
+- *[gap days — no work on project]*
+- **2026-07-01** — Playbook + Automation Rule wired; full autonomous chain proven end to end (this entry).
+
+*(Verify/adjust the middle dates: 6/24 is anchored by the prior commit; 7/01 is anchored by Azure resource timestamps on the incidents, automation rule, and playbook runs. Any additional work sessions between should be added here.)*
+
+### What shipped — the walking skeleton is complete
+The full SOAR loop now runs with zero human intervention. Replaying the forwarder generated fresh incidents; ~seconds after each incident was created, a triage comment appeared on it, written by the Function's managed identity — no curl, no manual trigger.
+
+Proven chain:
+`Forwarder -> data in MCPProtocolLogs_CL -> detection rule fires -> incident created -> automation rule routes it -> playbook triggers -> HTTP -> Function -> comment written (as managed identity)`
+
+Timing observed: incident `8df5db76` created 17:42:09, comment written 17:42:16 — **7 seconds**. All latency is in the scheduled-detection step (the "patrol interval"); once the incident exists, the automation-rule -> playbook -> Function -> write-back response is effectively instant (event-driven).
+
+### The five-stage SOAR pattern, now concrete
+- **detect** — scheduled analytics rule (Rule 2 Cross-Tool, among the four)
+- **incident** — grouped per session
+- **route** — Standard automation rule, "When incident is created" trigger
+- **act** — playbook (thin) -> HTTP -> Azure Function (the logic)
+- **outcome** — comment write-back by managed identity (credential-free)
+
+### The three identity hops (the load-bearing lesson: every SOAR hop is a scoped role on an identity)
+| Identity | Role | Purpose | Credential? |
+|---|---|---|---|
+| Function's managed identity | Microsoft Sentinel Responder | Write incident comments | None (managed identity) |
+| Sentinel automation SP ("Azure Security Insights", app `98785600-...`, object `cad754b8-...`) | Microsoft Sentinel Automation Contributor (`f4c81013-...`) | Run the playbook | N/A |
+| Playbook -> Function hop | **Function key (stored secret)** | Playbook calls Function | **KEY — still to eliminate (see gates)** |
+
+When a SOAR chain "doesn't fire," a missing permission on one of these hops is the first suspect, before logic. Lived this three times.
+
+### Artifacts captured (docs/figures/)
+- `figure_11_automation_rule_active_incident_trigger.png` — rule Active, incident trigger, scoped (routing armed)
+- `figure_12_playbook_run_history_201_success.png` — run Succeeded; HTTP body shows real incident ARM ID in, `201` + `status:ok` out (full round-trip)
+- `figure_13_managed_identity_comment_autowritten.png` — comment authored by managed identity ("Comment created from external application - func-mcp-triage-lab-rg"), not a user (credential-free outcome)
+
+Together these narrate: routed -> executed successfully -> outcome written autonomously by a credential-free identity.
+
+### Scar-tissue lessons (all real, all cost time)
+- **Portal split #1 — incident trigger only in Standard rules.** The Defender portal's *Enhanced* automation rules exposed only "When alert is created." Incident-level triggers live in **Standard rules**. Concept: alert-level vs incident-level automation are different surfaces post-unification. Exam-relevant (unified platform).
+- **Portal split #2 — Azure portal Automation redirects to Defender.** Workspace is fully onboarded to the unified platform; the classic Azure Sentinel automation page redirects. Concept: after Defender onboarding, some config moves; "it's on the other portal."
+- **Portal split #3 — "Manage playbook permissions" opens docs, not a panel.** The Defender portal stubs the RBAC-granting UI. Worked around it via CLI role assignment (which is what the button does underneath). Concept: every "grant permissions" GUI = an `az role assignment create`.
+- **Tenant gremlin (recurring).** "Limited or No Access / not a member of this tenant" in the portal — same guest-account (`#EXT#`) root cause as the CLI's `SubscriptionNotFound` earlier. Fix: force tenant `a3e85d53-...` via `https://portal.azure.com/#@a3e85d53-...` (NOT the onmicrosoft.com guest dir). Do NOT click "I acknowledge" (that drops you in as a no-access passthrough user) — click "Sign out" and re-enter on the right tenant.
+- **Service principal empty `id` on table query.** `az ad sp show ... -o table` returned name but blank id (guest-tenant resolution flakiness); `--query id -o tsv` resolved it cleanly (`cad754b8-...`). Reference SPs by stable app ID (`98785600-...`, global constant) when name/object resolution is unreliable.
+- **Status codes told the debugging story.** 401 "only the author can edit" (4xx = my request's fault; comment-name collision -> fixed with uuid) progressed to 201 Created (2xx success, new resource). 4xx = caller's fault, 5xx = server's fault — the fastest triage of an API failure.
+
+### Design notes / refinements to revisit (not blocking)
+- **"For each" loop wraps the HTTP action.** Referencing alert-level data pulled the Function call inside a per-alert "For each" loop (ran "1 of 1" — one alert per incident, fine now). Risk: if an incident ever held multiple alerts, the Function would be called once per alert (duplicate comments). When wiring real SessionId, consider restructuring to call the Function once per incident.
+- **Scoping is broader than intended.** The automation rule fired on ALL FOUR MCP incidents, not just Cross-Tool (four playbook runs observed, one per incident). The condition is likely "Analytics rule name Contains MCP," not the single Cross-Tool rule. This is arguably the BETTER design for a triage pipeline (triage every tool-shadowing incident), but verify the condition and confirm it's intentional. Lesson: verify automation-rule conditions rather than assuming scope from a truncated view.
+
+### OPEN GATES (must close before certain milestones)
+1. **SessionId is a placeholder.** Body currently sends `sessionId: "PLACEHOLDER-chain-test"`. Real extraction from nested alert custom details is deferred (enrichment work, Sprint 2). Chain-first was deliberate — prove plumbing, then wire real data.
+2. **Function key must be eliminated before GitHub publish.** The playbook -> Function hop uses a function key (a stored secret). GATE: swap to managed-identity-to-Function (Azure AD / Easy Auth) and remove the key BEFORE exporting the playbook definition to the repo. Keep the playbook cloud-only until then — a committed playbook ARM definition must not contain the key.
+
+### SC-200 objectives covered
+- Configure SOAR in Microsoft Sentinel (automation rules + playbooks; the complete pattern, built and verified)
+- Configure Microsoft Sentinel roles and permissions (three scoped role assignments across identities)
+- Manage Microsoft Sentinel analytics rules (scheduled rules as the automation trigger source)
+- (Unified platform) Navigate Sentinel in the Defender portal; alert-vs-incident automation surfaces
+
+### Next
+- Sprint 2 — deterministic session reconstruction (Function queries MCPProtocolLogs_CL on SessionId; the Log Analytics Reader role starts being used). This is also where real SessionId extraction replaces the placeholder.
+- Before any GitHub publish of the playbook: close Gate 2 (managed-identity-to-Function swap).
