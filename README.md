@@ -9,7 +9,7 @@ and either auto-close with an explanation or escalate with the evidence assemble
 bounded LLM writes a plain-English incident summary; all decisions are made by
 deterministic code, never the model.
 
-> **Status:** Sprint 0 (design complete; detection rules being stood up as live analytics rules). Build not yet started.
+>> **Status:** Sprint 1 complete — walking skeleton proven. The full autonomous chain runs end to end: a detection incident triggers an automation rule → Logic App playbook → Azure Function that writes a triage comment back to the incident as its managed identity, with zero human intervention. Sprints 2–4 (enrichment, scoring, bounded LLM) fill in the Function's logic on this proven plumbing. See `docs/DAILY_LOG.md` for the build record.
 
 ## The portfolio arc
 
@@ -35,6 +35,39 @@ architectural principle: the model is a bounded component, not the orchestrator.
 
 - `docs/` — design spec, interface contract, architecture diagram, daily log
 
-## Repository status
+## Build status by sprint
 
-Skeleton. Pipeline code lands in Sprint 1.
+| Sprint | Scope | Status |
+|--------|-------|--------|
+| 0 | Detection foundation (four analytics rules live, grouped per session) | Complete |
+| 1 | Walking skeleton (automation rule → playbook → Function → managed-identity write-back) | Complete & verified |
+| 2 | Deterministic session reconstruction (query MCPProtocolLogs_CL on SessionId) | Next |
+| 3 | Deterministic scoring + response actions | Planned |
+| 4 | Bounded LLM narrative summary | Planned |
+| 5 | Docs, figures, demo video | Planned |
+
+## Open gates (must close before the noted milestone)
+
+> **⚠ Gate — before any public GitHub publish of the playbook definition:**
+> The playbook currently calls the Function using a **function key** (a stored secret).
+> This must be swapped to **managed-identity-to-Function auth** (Azure AD / Easy Auth) and
+> the key removed **before** the playbook's ARM/Logic App definition is exported to this repo.
+> A committed playbook definition must never contain the key. The playbook stays cloud-only
+> until this swap is done.
+
+- **SessionId is a placeholder** in the current skeleton (`PLACEHOLDER-chain-test`). Real
+  extraction from the incident's alert custom details lands in Sprint 2 (enrichment). This
+  was a deliberate chain-first choice: prove the plumbing, then wire the real data.
+
+## Verifying the pipeline
+
+Note: the Defender/Azure portal incident **Comments** panel does not display comments written
+via the API. Verify write-back through the REST API instead:
+
+```bash
+az rest --method get \
+  --url "https://management.azure.com/<incident-arm-id>/comments?api-version=2023-11-01"
+```
+
+The auto-written comment's `author` will be the Function's managed identity
+(not a user), which is the proof of credential-free write-back.
