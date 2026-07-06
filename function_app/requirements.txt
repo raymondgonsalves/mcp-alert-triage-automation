@@ -6,3 +6,6 @@ azure-identity
 
 # HTTP calls to the Sentinel REST API
 requests
+
+# The Function app needs the Azure Monitor Query SDK to run KQL from Python
+azure-monitor-query
