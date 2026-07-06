@@ -41,8 +41,8 @@ architectural principle: the model is a bounded component, not the orchestrator.
 |--------|-------|--------|
 | 0 | Detection foundation (four analytics rules live, grouped per session) | Complete |
 | 1 | Walking skeleton (automation rule → playbook → Function → managed-identity write-back) | Complete & verified |
-| 2 | Deterministic session reconstruction (query MCPProtocolLogs_CL on SessionId) | Next |
-| 3 | Deterministic scoring + response actions | Planned |
+| 2 | Deterministic session reconstruction (query MCPProtocolLogs_CL on SessionId) | Complete |
+| 3 | Deterministic scoring + response actions | Next |
 | 4 | Bounded LLM narrative summary | Planned |
 | 5 | Docs, figures, demo video | Planned |
 
@@ -55,8 +55,7 @@ architectural principle: the model is a bounded component, not the orchestrator.
 > A committed playbook definition must never contain the key. The playbook stays cloud-only
 > until this swap is done.
 
-- **SessionId is a placeholder** in the current skeleton (`PLACEHOLDER-chain-test`). Real
-  extraction from the incident's alert custom details lands in Sprint 2 (enrichment). This
+  Real extraction from the incident's alert custom details lands in Sprint 2 (enrichment). This
   was a deliberate chain-first choice: prove the plumbing, then wire the real data.
 
 ## Verifying the pipeline

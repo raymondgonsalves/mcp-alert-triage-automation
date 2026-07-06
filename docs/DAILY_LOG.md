@@ -237,3 +237,65 @@ Together these narrate: routed -> executed successfully -> outcome written auton
 ### Next
 - Sprint 2 — deterministic session reconstruction (Function queries MCPProtocolLogs_CL on SessionId; the Log Analytics Reader role starts being used). This is also where real SessionId extraction replaces the placeholder.
 - Before any GitHub publish of the playbook: close Gate 2 (managed-identity-to-Function swap).
+
+---
+
+## 2026-07-06 — MILESTONE: Sprint 2 COMPLETE (deterministic SessionId reconstruction; Gate 1 closed)
+
+**Work span:** Built across sessions 2026-07-03 (design + KQL verification) through 2026-07-06 (Function port, deploy, deployed proof). Non-work days between.
+
+### What shipped
+The Function no longer sends a placeholder SessionId — it **derives the real SessionId from the log data**. The `PLACEHOLDER-chain-test` is gone from the live pipeline. Proven twice:
+- **Locally** (DefaultAzureCredential -> dev identity): proved the *code and query logic*. Returned `reconstructed: true, sessionId: c7df4d04-...`.
+- **Deployed** (DefaultAzureCredential -> managed identity): proved the *authorization*. Same result, but the query ran as the managed identity using its **Log Analytics Reader** role — that role's first real exercise since it was pre-assigned in Sprint 1.
+
+### The design (verified before coding, every step)
+Single **KQL join** bridges incident -> its alert -> SessionId, entirely server-side (correlation + nested-JSON extraction both in KQL; Python receives one clean string):
+```
+SecurityIncident (by IncidentName) -> arg_max latest -> mv-expand AlertIds
+  -> join kind=inner SecurityAlert on AlertId == SystemAlertId
+  -> extract SessionId = tostring(parse_json(tostring(parse_json(ExtendedProperties)["Custom Details"]))["SessionId"][0])
+```
+Two different keys, two different jobs (an important distinction, easy to conflate):
+- **SystemAlertId** = the *bridge* key that joins incident -> alert (incident's `AlertIds` array matches `SecurityAlert.SystemAlertId`).
+- **SessionId** = the *correlation payload* extracted FROM the alert's custom details. Its job is correlating session events (used later in reconstruction), NOT bridging incident->alert.
+
+Data structure verified against real data: `ExtendedProperties` is a JSON string whose `Custom Details` value is ITSELF a JSON string (double-nesting -> two parse_json calls), and every custom detail is an ARRAY (CallId had two values, proving why `[0]` is always required).
+
+### Architecture decisions
+- **Function extracts SessionId itself** (playbook stays thin, passes only incidentArmId). Chosen over playbook-side extraction: keeps logic in testable Python, avoids fiddly designer expressions.
+- **Single data-plane query** over two-step (management API + query). The alerts management API does NOT return custom details — they live only in the `SecurityAlert` log table's `ExtendedProperties`. So one KQL query does both correlation and extraction. One new mechanism (azure-monitor-query / LogsQueryClient), one plane for this step.
+- **30-day time window** on the SecurityAlert filter — performance guard (partitions by time); fresh incidents always well within it.
+- **Graceful degradation** — if reconstruction finds no match, the Function still writes a flagged comment (no silent failure; the analyst learns the incident was processed).
+
+### Two planes, one identity — both now proven in the cloud
+- **Data plane** — LogsQueryClient query, **Log Analytics Reader** (proven THIS sprint, first exercise)
+- **Management plane** — comment write, **Sentinel Responder** (proven Sprint 1)
+Same DefaultAzureCredential resolves to dev identity locally / managed identity deployed.
+
+### Audit-grade proof (the deployed managed-identity path)
+`az rest` on the incident's comments, sorted by time via jq, shows the LATEST comment authored by:
+- name: "Comment created from external application - func-mcp-triage-lab-rg"
+- **objectId: e5c28c8b-3b63-4e44-883a-858b185ff63b** (the Function App's managed identity principal)
+- message: the Sprint 2 text with the real reconstructed SessionId c7df4d04-...
+Validated against a CONTROL: an earlier comment correctly attributed to "Raymond Gonsalves" (objectId 9ed673f4-...). Two distinct objectIds = attribution system distinguishes actors correctly = the managed-identity attribution is real, not a default label. (Note: `grep -A3` initially hid this by stripping timestamps — used jq to sort structured data properly. Right tool for structured data = jq, not grep.)
+
+### Debugging notes worth keeping
+- Local `func start` shows `AzureWebJobsStorage: Unhealthy` warning — BENIGN for an HTTP function (that storage is for internal bookkeeping / timer/durable features, not simple HTTP triggers). Severity triage: not on the critical path; the curl worked despite it. (Fix if a clean console is wanted: run Azurite emulator.)
+- `curl (7) Failed to connect` = nothing listening = server not running (connection-level failure, below HTTP). Distinct from a 401/403 (server up, rejected). The error TYPE points to the layer. Cause: had Ctrl+C'd func start before curling; need host + curl running concurrently in two terminals.
+
+### OPEN GATES
+1. ~~SessionId placeholder~~ — **CLOSED this sprint.**
+2. **Function key -> managed-identity swap** — STILL OPEN. The playbook->Function hop still uses a function key (a stored shared secret in the URL `?code=`). Must swap to managed-identity/Easy-Auth (Bearer token) and remove the key BEFORE exporting the playbook definition to GitHub.
+
+### SC-200 / concept coverage this sprint
+- KQL: parse_json / nested (double) parsing, dynamic-field navigation, arrays + `[0]`, `join kind=inner`, `mv-expand ... to typeof(string)`, `arg_max(TimeGenerated,*)`, `let`, time-filter-early performance.
+- Data sources: custom details live in `SecurityAlert.ExtendedProperties` (log table), NOT the management API. Same logical alert has multiple representations; know which holds which field.
+- Identity: DefaultAzureCredential credential chain (managed identity vs az CLI); authN (token) vs authZ (roles); managed identity = no stored secret + attributable actions (objectId in audit record).
+- Planes: data-plane read (Log Analytics Reader) vs management-plane write (Sentinel Responder); a role assigned but never exercised is unproven until invoked.
+- Serverless: module-load vs request-time execution (cold start); `@app.route` decorator registers + wires the HTTP trigger; Function App (container) vs function (item); route name vs function name; deploy = management-plane promotion using dev identity; "deployed" != "working" (runtime authorization is a separate test).
+- Evidence: consistent-with vs inferred vs audit-grade proof; control cases; structure-aware tools (jq) vs line tools (grep).
+
+### Next
+- Sprint 3 — deterministic scoring + response actions (the SessionId now feeds real session reconstruction / enrichment).
+- Before any GitHub publish of the playbook: close Gate 2 (function-key -> managed identity).
