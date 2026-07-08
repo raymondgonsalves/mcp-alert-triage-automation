@@ -353,13 +353,13 @@ Symptom (layers don't share a SessionId) -> hypothesis (the model generates diff
 
 ## 2026-07-07 — MILESTONE: Sprint 3 COMPLETE (deterministic recipient-aware scoring; the pipeline now decides)
 
-**Work span:** 2026-07-06 to 2026-07-07. Design -> investigation (which produced a documented AI-security finding) -> query verification -> Python scorer -> local + deployed test -> bug found and fixed by inspecting output.
+**Work span:** 2026-07-06 to 2026-07-08 (UTC). Design -> investigation (which produced a documented AI-security finding) -> query verification -> Python scorer -> local + deployed test -> two real bugs and a duplicate-incident discovery caught by verifying actual behavior.
 
 ### What shipped
-The pipeline now **makes a decision**: it scores each session's severity deterministically and writes that severity, with reasoning and evidence, back to the incident as a human-in-the-loop pre-assessment. Still no LLM (that is Sprint 4). The Function's flow: incident -> SessionId (Sprint 2) -> gather per-session facts -> deterministic score -> comment.
+The pipeline now **makes a decision**: it scores each session's severity deterministically and writes that severity, with reasoning and evidence, back to the incident as a human-in-the-loop pre-assessment. Still no LLM (that is Sprint 4). Flow: incident -> SessionId (Sprint 2) -> gather per-session facts -> deterministic score -> comment.
 
 ### The scoring model (recipient-aware, evidence-backed)
-Two evidence dimensions, combined into a deterministic decision table:
+Two evidence dimensions combined into a deterministic decision table:
 - **Layer presence** (from SecurityAlert): which detection rules fired -> ingestion corroboration (count of R1/R2/R3) and execution (R4).
 - **Realized impact** (from MCPProtocolLogs_CL CallParameters): the actual send recipient -> did harm land.
 
@@ -371,43 +371,56 @@ IngestionSignals >= 2     -> MEDIUM     (corroborated ingestion, not executed)
 IngestionSignals == 1     -> LOW        (single ingestion signal)
 else                      -> INFORMATIONAL
 ```
-
-Verified tier mapping against real data: ollmcp c7df4d04/75682b09 -> Critical (realized breach, 4-of-8 sends to attacker); Claude 885f51f0/d85ebe36 -> Medium (2 ingestion signals); Claude 9dc4131a/06a74586 -> Low (1 ingestion signal).
+Verified tier mapping vs. real data: ollmcp c7df4d04/75682b09 -> Critical (realized breach, 4-of-8 sends to attacker); Claude 885f51f0/d85ebe36 -> Medium (2 ingestion signals); Claude 9dc4131a/06a74586 -> Low (1 ingestion signal).
 
 ### Key design decisions
-- **Score observed behavior, not static tags.** The input is which detection layers co-occurred on the reconstructed session, NOT the static MITRE technique tag (which is constant per rule -> circular). MITRE is the rubric (informs weighting: execution above ingestion), not a runtime input.
-- **Recipient as realized-impact signal (allowlist).** The severity distinction between a defended attempt (send to legitimate recipient) and a realized breach (send to attacker) lives in the CallParameters payload, not in which rule fired. Used an allowlist check (recipient != legitimate) rather than a denylist (== known-attacker): the allowlist catches UNKNOWN-bad recipients, the stronger security posture.
-- **Two independent severity axes, not one.** Confidence/corroboration (how many independent ingestion signals agree) is separate from impact (did harm land). Kept them distinct.
-- **Rule 4 proposes, recipient confirms.** R4 detects the redirect shape; the recipient confirms whether it actually landed. This escalates a confirmed breach to Critical and downgrades a defended attempt -- avoiding false-high severity on blocked attacks (alert-fatigue discipline).
+- **Score observed behavior, not static tags.** Input is which detection layers co-occurred on the reconstructed session, NOT the static MITRE technique tag (constant per rule -> circular). MITRE is the rubric (informs weighting: execution above ingestion), not a runtime input.
+- **Recipient as realized-impact signal (allowlist).** The severity distinction between a defended attempt (send to legitimate recipient) and a realized breach (send to attacker) lives in the CallParameters payload, not in which rule fired. Used an allowlist check (recipient != legitimate) rather than a denylist (== known-attacker): the allowlist catches UNKNOWN-bad recipients, the stronger posture.
+- **Two independent severity axes:** confidence/corroboration (how many independent ingestion signals agree) is separate from impact (did harm land).
+- **Rule 4 proposes, recipient confirms.** R4 detects the redirect shape; the recipient confirms whether it landed -- escalating a confirmed breach to Critical and downgrading a defended attempt (avoids false-high severity on blocked attacks).
 
 ### Engineering: pure function + full branch coverage
-- `score_session(facts) -> (severity, reasoning)` is a **pure function** (no I/O), so it is unit-testable in isolation. `test_scorer.py` exercises ALL branches -- including the "corroborated ingestion + realized breach" branch that NO real session can produce (ollmcp can't emit ingestion events; Claude won't execute). That branch is verified synthetically (by constructing the fact dict) even though real data can't reach it. Logic proven synthetically; behavior proven on real data (c7df4d04 -> Critical).
-- Querying (`_gather_session_facts`), scoring (`score_session`), and presentation (`_build_comment`) are separate single-responsibility functions.
+- `score_session(facts) -> (severity, reasoning)` is a **pure function** (no I/O), unit-testable in isolation. `test_scorer.py` exercises ALL branches -- including "corroborated ingestion + realized breach" which NO real session can produce (ollmcp can't emit ingestion events; Claude won't execute). That branch is verified synthetically. Logic proven synthetically; behavior proven on real data (c7df4d04 -> Critical).
+- Querying (`_gather_session_facts`), scoring (`score_session`), presentation (`_build_comment`) are separate single-responsibility functions.
 
-### Bug found and fixed (documented lesson)
-First deployed run wrote a comment where the evidence arrays were exploded into single characters: recipients showed as ['[','"','a','l','i','c','e',...] instead of ['alice@mail.com','attacker@pwnd.com'].
-- **Root cause:** make_set() dynamic arrays came back from the Azure Monitor SDK as a JSON *string* (e.g. '["a","b"]'), not a Python list. Calling list() on a string iterates it CHARACTER BY CHARACTER -- a serialization-boundary bug.
-- **Fix:** parse with json.loads via a defensive `_as_list()` helper that handles both the JSON-string and already-a-list shapes.
-- **Lessons:** (1) list() iterates, it does not "convert" -- know your input's type at a boundary. (2) Data crossing system boundaries is serialized; deserialize it (json.loads) rather than treating serialized text as a native object. (3) A 201 / "success" does NOT mean correct output -- this was caught only by INSPECTING the comment content, not by trusting the status code. Verify content, not just the success signal.
+### THREE real problems caught -- each by verifying actual output/behavior, not trusting a signal
+
+**1. Malformed comment (JSON-string / list() bug).**
+First deployed comment exploded the evidence arrays into single characters (recipients showed as ['[','"','a','l','i','c','e',...]).
+- Root cause: make_set() dynamic arrays came back from the Azure Monitor SDK as a JSON *string* ('["a","b"]'), not a Python list. list() on a string iterates it CHARACTER BY CHARACTER -- a serialization-boundary bug.
+- Fix: parse with json.loads via a defensive `_as_list()` helper handling both JSON-string and already-a-list shapes.
+- Lesson: list() iterates, it does not "convert"; data crossing a system boundary is serialized and must be deserialized; a 201/"success" does NOT mean correct output -- caught only by INSPECTING the comment content.
+
+**2. Stale deployment (deployed function running OLD code).**
+After a redeploy, the deployed function was still writing **Sprint 2** comments ("reconstruction only, no scoring"). The repo file was correctly Sprint 3 (grep confirmed score_session present), but the deployed code was Sprint 2 -- the earlier deploy had not actually pushed the new code to Azure.
+- Caught by: reading what the deployed function ACTUALLY WROTE (the jq comment content said "Sprint 2"), not trusting that "I ran a publish" meant Sprint 3 was live.
+- Fix: explicit redeploy (func azure functionapp publish ...), watched for "Remote build succeeded" + triage registered, then re-verified behaviorally. New comment then correctly read "Sprint 3 ... CRITICAL".
+- Lesson: "deployed" (the command ran) != "the new version is live and serving" (verified behavior). Confirm a deploy by the deployed system's ACTUAL behavior, not the deploy command's exit. This is post-deploy behavioral verification / release validation.
+
+**3. Duplicate incidents (same title, different GUIDs).**
+The portal would not show incident "number 7" (f03904b2) and instead showed "number 1" whose activities stopped at June 24 -- contradicting the jq proof of a July-8 comment. Root cause: TWO incidents share the title "MCP Tool Shadowing executed: send_email redirected to attacker@pwnd.com" with DIFFERENT GUIDs (f03904b2 = number 7, created Jul 1; 71ca1ae3 = number 1, created Jun 22). Lab detection re-runs create NEW incidents (new GUIDs), not updates to old ones. The Function correctly targets f03904b2 by GUID; the portal navigation (by title/number) landed on the other one.
+- Caught by: refusing to accept a date that didn't add up (a July-8 comment can't be absent from the incident that has it -> the viewed incident must be a different record), then resolving via the ARM API (listed all "Tool Shadowing" incidents with their GUIDs).
+- Lesson: entity resolution -- same label, different entity is a real trap. Resolve to the STABLE unique identifier (GUID), never the human label (title/number). Incident numbers are unstable (reassigned on rebuild). The ARM API is ground truth; the portal is a fallible, cached, sometimes-diverging view (Defender vs. Azure portals differ). When the UI confuses you, query the API.
 
 ### Two planes still both exercised (as managed identity, deployed)
-Scoring queries TWO tables now (SecurityAlert + MCPProtocolLogs_CL) via the data-plane Log Analytics Reader role; comment write via management-plane Sentinel Responder. Deployed run confirmed the managed identity can read both tables for scoring.
+Scoring queries TWO tables (SecurityAlert + MCPProtocolLogs_CL) via data-plane Log Analytics Reader; comment write via management-plane Sentinel Responder. Deployed run (proof: figure_15) confirmed the managed identity reads both tables for scoring and writes the scored comment. Audit-grade proof: jq on incident f03904b2 comments shows latest authored by objectId of func-mcp-triage-lab-rg with the Sprint 3 CRITICAL message.
 
 ### OPEN GATES
 1. ~~SessionId placeholder~~ -- closed Sprint 2.
 2. **Function key -> managed-identity swap** -- STILL OPEN. Playbook->Function hop still uses a function key (shared secret in URL). Swap to managed-identity/Easy-Auth before any GitHub publish of the playbook definition.
 
 ### Test-coverage note (honest)
-The "fully corroborated realized breach" tier (ingestion>0 AND RealizedBreach) has NO real-data example -- verified synthetically only. If a real full-arc realized-breach transcript is ever generated, verify that tier against it. Documented so the gap is explicit, not hidden.
+The "fully corroborated realized breach" tier (ingestion>0 AND RealizedBreach) has NO real-data example -- verified synthetically only, because ollmcp can't emit ingestion events and Claude won't execute. Documented so the gap is explicit.
 
 ### SC-200 / concept coverage this sprint
-- KQL: countif conditional aggregation, make_set/make_list, has vs contains (term-indexed vs substring), toint() explicit type conversion (KQL is strict -- no implicit bool->int), let for tabular subqueries, join kind=leftouter vs inner (data preservation), coalesce for outer-join nulls, row-count sanity after joins (fan-out/drop), booleans-summed-to-a-count idiom.
-- Detection: attempt vs realized impact (detection fidelity, alert fatigue); payload inspection over metadata; corroboration requires INDEPENDENT signals; confidence vs impact as separate axes; rule fires on a CONDITION (Claude's clean recipient means R4's condition unmet).
-- Epistemics: independent corroboration vs derived consistency (alerts are derived FROM telemetry -- their agreement checks the pipeline, not independent reality); data provenance/lineage; what agreement actually proves.
-- Software: pure functions & unit-testability; separation of concerns; serialization/deserialization at boundaries; list() iterates not converts; success-signal != correct-output (verify content).
-- Sentinel: incident (case) vs alert (detection); SystemAlertId as incident<->alert join key; IncidentName column holds the GUID; incidents queue is time-filtered (absence in a filtered view != absence in reality); portal is a view over the ARM API.
-- Investigation: root-cause vs symptom; confirm mechanism at source before acting; structural capability vs incidental absence; controlled comparison isolates the causal variable (model safety training).
+- KQL: countif conditional aggregation, make_set/make_list, has vs contains (term-indexed vs substring), toint() explicit type conversion (KQL strict -- no implicit bool->int), let for tabular subqueries, join kind=leftouter vs inner (data preservation), coalesce for outer-join nulls, row-count sanity after joins, booleans-summed-to-a-count idiom, getschema for schema discovery.
+- Detection: attempt vs realized impact (detection fidelity, alert fatigue); payload inspection over metadata; corroboration needs INDEPENDENT signals; confidence vs impact as separate axes; a rule fires on a CONDITION (Claude's clean recipient means R4's condition unmet).
+- Epistemics: independent corroboration vs derived consistency (alerts derived FROM telemetry -- agreement checks the pipeline, not independent reality); data provenance/lineage.
+- Software: pure functions & unit-testability; separation of concerns; serialization/deserialization at boundaries; list() iterates not converts; success-signal != correct-output.
+- Deployment: "deployed" != "live/serving"; post-deploy behavioral verification; a deploy can silently not-take.
+- Sentinel/identity: incident (case) vs alert (detection); SystemAlertId as incident<->alert join key; IncidentName column holds the GUID; incident numbers are UNSTABLE (reassigned on rebuild); GUID is the stable identity; entity resolution (same title != same incident); Defender portal vs Azure portal are different views over the same data; portal is a cached/filtered view, ARM API is ground truth.
+- Investigation: root-cause vs symptom; confirm mechanism at source before acting; one symptom can have multiple causes -- gather evidence to distinguish; refuse to accept a contradiction, investigate it.
 
 ### Next
-- Sprint 4 -- the bounded LLM: it NARRATES the deterministic score (explains it in natural language for the analyst) but does NOT make the severity decision. Determinism stays load-bearing; the model only adds readable explanation.
+- Sprint 4 -- the bounded LLM: it NARRATES the deterministic score (natural-language explanation for the analyst) but does NOT make the severity decision. Determinism stays load-bearing; the model only adds readable explanation. Every prior sprint built the trustworthy deterministic core precisely so the LLM can be added safely -- as narrator, not decider.
 - Before any GitHub publish of the playbook: close Gate 2 (function key -> managed identity).
