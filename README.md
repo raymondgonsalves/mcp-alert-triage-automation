@@ -9,7 +9,7 @@ and either auto-close with an explanation or escalate with the evidence assemble
 bounded LLM writes a plain-English incident summary; all decisions are made by
 deterministic code, never the model.
 
->> **Status:** Sprint 1 complete — walking skeleton proven. The full autonomous chain runs end to end: a detection incident triggers an automation rule → Logic App playbook → Azure Function that writes a triage comment back to the incident as its managed identity, with zero human intervention. Sprints 2–4 (enrichment, scoring, bounded LLM) fill in the Function's logic on this proven plumbing. See `docs/DAILY_LOG.md` for the build record.
+>> **Status:** Sprints 1–3 complete — the autonomous pipeline now detects, reconstructs, and scores. A detection incident triggers an automation rule → Logic App playbook → Azure Function (managed identity) that reconstructs the SessionId, gathers per-session facts, applies a deterministic recipient-aware severity model, and writes an explainable pre-assessment back to the incident — zero human intervention. Sprint 4 (bounded LLM narration) remains. See `docs/DAILY_LOG.md` for the build record.
 
 ## The portfolio arc
 
@@ -41,9 +41,9 @@ architectural principle: the model is a bounded component, not the orchestrator.
 |--------|-------|--------|
 | 0 | Detection foundation (four analytics rules live, grouped per session) | Complete |
 | 1 | Walking skeleton (automation rule → playbook → Function → managed-identity write-back) | Complete & verified |
-| 2 | Deterministic session reconstruction (query MCPProtocolLogs_CL on SessionId) | Complete |
-| 3 | Deterministic scoring + response actions | Next |
-| 4 | Bounded LLM narrative summary | Planned |
+| 2 | Deterministic session reconstruction (incident → alert → SessionId, server-side KQL) | Complete & verified |
+| 3 | Deterministic recipient-aware scoring (RealizedBreach → Critical) | Complete & verified |
+| 4 | Bounded LLM narrative summary | Next |
 | 5 | Docs, figures, demo video | Planned |
 
 ## Open gates (must close before the noted milestone)
@@ -55,8 +55,6 @@ architectural principle: the model is a bounded component, not the orchestrator.
 > A committed playbook definition must never contain the key. The playbook stays cloud-only
 > until this swap is done.
 
-  Real extraction from the incident's alert custom details lands in Sprint 2 (enrichment). This
-  was a deliberate chain-first choice: prove the plumbing, then wire the real data.
 
 ## Verifying the pipeline
 
