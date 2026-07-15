@@ -9,3 +9,7 @@ requests
 
 # The Function app needs the Azure Monitor Query SDK to run KQL from Python
 azure-monitor-query
+
+# anthropic — bounded LLM narrator : explains the deterministic severity; never decides it
+anthropic
+
