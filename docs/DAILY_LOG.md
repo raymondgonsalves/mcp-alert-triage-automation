@@ -449,7 +449,7 @@ Char-stripping does NOT neutralize word-based injection ("IGNORE PREVIOUS INSTRU
 `_build_comment` writes two explicitly-labeled blocks: `[Rule-based - Non AI generated] Severity: …` (authoritative, always first) and `[AI-generated explanation -- narration only, does not affect the severity above] …` (additive, only if narration present). Labeling both sides means an analyst never has to INFER which half is authoritative — the label itself is the control. If the LLM fails, the comment is exactly the deterministic pre-assessment; the authoritative content never degrades.
 
 ### BOTH LLM paths proven against REAL conditions (branch coverage)
-- **Fail-safe path** (2026-07-10): the Anthropic API returned a REAL `400 - credit balance too low` error. L5 caught it, logged the traceback, and the pipeline wrote the deterministic-only comment and succeeded (`Executed 'triage' (Succeeded)`). Real fault-injection, not a mock — stronger than the earlier stubbed test. (figure_18)
+- **Fail-safe path** (2026-07-10): the Anthropic API returned a REAL `400 - credit balance too low` error. L5 caught it, logged the traceback, and the pipeline wrote the deterministic-only comment and succeeded (`Executed 'triage' (Succeeded)`). Real fault-injection, not a mock — stronger than the earlier stubbed test. (figure_16)
 - **Happy path** (2026-07-10 → 07-14): deployed, managed identity, real Claude narration appended and correctly labeled. (figures 16, 17 manual-invoked; figures 20, 21 fully autonomous.)
 
 ### THE MAIN FINDING — a commit-latency race: discovered, MIS-DIAGNOSED, measured, corrected, verified
@@ -469,7 +469,7 @@ The query STARTS from `SecurityIncident` (inner join); its Log Analytics table c
 **Corrected fix (07-14):** a 120s `Delay` action in the playbook, BEFORE the HTTP call to the Function (right layer: the orchestrator shouldn't invoke the responder before the responder's input exists; and a playbook delay avoids the Logic App's ~120s synchronous-HTTP timeout that an in-Function sleep would risk). The 45s in-Function retry is retained as a variance backstop. **Verified:** incident #18, autonomous run, comment landed ~139s after creation (120s delay + 8s measured chain latency + Function work), and — the key signal — it was a scored `CRITICAL` + narrated comment, NOT the degraded message. The degraded→scored flip is the fix, confirmed.
 
 ### TWO more corrections caught by verification this sprint
-**1. `Trigger: Manual` in the Defender activity pane is NOT evidence of manual invocation.** Initially read it as "the Function was curl-invoked." Falsified: incident #18's comment shows `Trigger: Manual` yet was written by a run we KNOW was autonomous. The field describes HOW the comment was added (external app via ARM comments API) — every Function-written comment reads Manual regardless of what invoked the Function. **Autonomy is evidenced by the Logic App run history, not this field** (figure_22: Sentinel-incident trigger → Delay 2m → For each → HTTP, all green, run started off the incident event).
+**1. `Trigger: Manual` in the Defender activity pane is NOT evidence of manual invocation.** Initially read it as "the Function was curl-invoked." Falsified: incident #18's comment shows `Trigger: Manual` yet was written by a run we KNOW was autonomous. The field describes HOW the comment was added (external app via ARM comments API) — every Function-written comment reads Manual regardless of what invoked the Function. **Autonomy is evidenced by the Logic App run history, not this field** (figure_23: Sentinel-incident trigger → Delay 2m → For each → HTTP, all green, run started off the incident event).
 **2. Chain-startup latency measured at 8s, not the ~2s assumed** (incident #18 created 14:28:08 → playbook run started 14:28:16). Small, but the delay-margin math should use the measured value.
 
 ### Progression (the engineering story, three data points)
@@ -486,11 +486,12 @@ Jul 14   120s delay+retry comment @ +139s  CRITICAL scored + narrated  ✓
 
 ### Artifacts produced
 - Sprint 4 `function_app.py` (496 lines: narrator + retry) + requirements.txt (`anthropic`)
-- figure_16/17 — deployed narrated assessment, CLI + Defender UI (manual-invoked)
-- figure_18 — fail-safe graceful degradation vs. a REAL zero-credits API error
-- figure_19 — autonomous run degraded comment (the race; incident #9) + 12s gap
-- figure_20/21 — fully-autonomous narrated assessment, CLI + Defender UI (incident #18)
-- figure_22 — Logic App run history: autonomous invocation + the 120s Delay executing
+- figure_16 — fail-safe graceful degradation vs. a REAL zero-credits API error (terminal png + full-log txt)
+- figure_17/18 — deployed narrated assessment, CLI + Defender UI (manual-invoked; incident #7)
+- figure_19 — autonomous run degraded comment (the race; incident #9, "no SessionId" jq)
+- figure_20 — autonomous race gap: incident creation time vs. degraded-comment time (~12s, incident #9)
+- figure_21/22 — fully-autonomous narrated assessment, CLI + Defender UI (incident #18)
+- figure_23 — Logic App run history: autonomous invocation + the 120s Delay executing
 - `FINDING_alert_commit_race.md` — the two-stage race diagnosis (wrong hypothesis retained + measured correction)
 - Updated function_app flow diagram (draw.io + docx) reflecting the narrator, retry, and architectural bound
 
