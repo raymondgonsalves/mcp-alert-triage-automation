@@ -4,7 +4,7 @@
 **Root cause corrected:** 2026-07-13 (see "Superseding measurement" below)
 **Sprint:** 4 (bounded LLM narrator)
 **Finding severity:** Low — graceful degradation held throughout; no crash, no wrong verdict, no bad action
-**Status:** Root cause **measured** (not inferred). Corrected fix designed; playbook delay + re-run scheduled 2026-07-14.
+**Status:** RESOLVED. Root cause measured (not inferred); corrected fix (120s playbook delay) deployed and **VERIFIED** 2026-07-14 — see "Fix verified" below.
 
 ---
 
@@ -111,7 +111,7 @@ ingestion pipeline, and it lagged the ARM resource by 77 seconds.
 different systems with different latencies** — and the reconstruction query depends on the
 slower one.
 
-## Corrected fix (to implement 2026-07-14)
+## Corrected fix (implemented and verified 2026-07-14)
 
 **Add a 120-second `Delay` action to the playbook (`pb-mcp-triage-skeleton`), between the
 trigger and the HTTP call to the Function.** Retain the Function's existing 45 s retry as a
@@ -157,3 +157,46 @@ the evidence, was never measured, and was wrong — and the fix built on it fail
 `ingestion_time()` should have been the *first* diagnostic step, not the second.
 
 **Measure the latency; don't infer it.**
+
+---
+
+## Fix verified (2026-07-14)
+
+The 120s playbook `Delay` was added (before the HTTP call to the Function) and published;
+the pipeline was re-run end to end.
+
+**Result — the fix works:**
+- Incident: #18, GUID `d9b3c5e7-7332-4641-881a-2b929f3cd380`
+- Incident created: `2026-07-14T14:28:08Z`
+- Comment written: `2026-07-14T14:30:27Z` — **~139s elapsed**
+- The comment was a scored **`CRITICAL`** verdict WITH real AI narration (session
+  `07bdeb28-2bbc-40e8-a628-c9f8111db411`) — **NOT** the degraded "no SessionId" message.
+
+The degraded → scored flip is the confirmation. Progression across the three runs:
+
+```
+Jul 10   no delay          comment @ +12s    DEGRADED (race discovered)
+Jul 13   45s in-fn retry   comment @ +58s    DEGRADED (retry fired; wrong table targeted)
+Jul 14   120s delay+retry  comment @ +139s   CRITICAL scored + narrated   ✓
+```
+
+**Measured chain-startup latency:** 8s (incident #18 created 14:28:08 → playbook run started
+14:28:16), not the ~2s originally assumed. Delay-margin math uses the measured value: Function
+fires at ≈ T+128s (8s chain + 120s delay), vs. the 77s `SecurityIncident` commit — ~51s margin,
+with the 45s in-Function retry as a further backstop.
+
+### Correction: `Trigger: Manual` is NOT evidence of manual invocation
+
+The Defender incident Activity pane shows **`Trigger: Manual`** on the autonomous comment —
+initially misread as "the Function was curl-invoked." **Falsified:** incident #18's comment
+reads `Trigger: Manual` yet was written by a run we KNOW was autonomous (no curl was issued;
+the Logic App run history shows it fired off the incident trigger). The field describes HOW the
+comment was added — an external application writing via the ARM comments API — **not** what
+invoked the Function. Every Function-written comment reads `Manual` regardless of invocation
+path. **Autonomy is evidenced by the Logic App run history (Sentinel-incident trigger → Delay
+2m → For each → HTTP, all green), not by this field.**
+
+### Evidence
+- figure_21 — autonomous narrated assessment, CLI (`jq`, incident #18, CRITICAL + narration)
+- figure_22 — autonomous narrated assessment, Defender UI (incident #18)
+- figure_23 — Logic App run history: autonomous invocation + the 120s Delay executing
