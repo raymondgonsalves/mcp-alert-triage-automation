@@ -1,0 +1,119 @@
+(.venv) gonsalvr@Ray-G-Desktop:~/dev/mcp-alert-triage-automation/function_app$ func start
+
+
+Azure Functions Core Tools
+Core Tools Version:       4.12.0+21d180f3f62481fc8035563798e6d970d8eb0ebb (64-bit)
+Function Runtime Version: 4.1048.200.26180
+
+[2026-07-10T09:20:00.614Z] Worker process started and initialized.
+
+Functions:
+
+        triage:  http://localhost:7071/api/triage
+
+For detailed output, run func with --verbose flag.
+[2026-07-10T09:20:15.688Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"A timeout occurred while running check."}}
+[2026-07-10T09:20:22.499Z] Executing 'Functions.triage' (Reason='This function was programmatically called via the host APIs.', Id=3cb8616b-0678-43a2-9e82-05571d35e0bc)
+[2026-07-10T09:20:22.530Z] Triage invoked for incident f03904b2-b858-4698-84f0-5b5779919b6e
+[2026-07-10T09:20:22.536Z] Request URL: 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=REDACTED'
+[2026-07-10T09:20:22.536Z] Request method: 'GET'
+[2026-07-10T09:20:22.536Z] Request headers:
+[2026-07-10T09:20:22.536Z]     'User-Agent': 'azsdk-python-identity/1.25.3 Python/3.12.3 (Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39)'
+[2026-07-10T09:20:22.536Z] No body was attached to the request
+[2026-07-10T09:20:25.238Z] DefaultAzureCredential acquired a token from AzureCliCredential
+[2026-07-10T09:20:25.238Z] Request URL: 'https://api.loganalytics.io/v1/workspaces/d0f3187b-ec35-4281-9cb6-52a34418236a/query'
+[2026-07-10T09:20:25.238Z] Request method: 'POST'
+[2026-07-10T09:20:25.238Z] Request headers:
+[2026-07-10T09:20:25.238Z]     'content-type': 'application/json'
+[2026-07-10T09:20:25.238Z]     'Content-Length': '740'
+[2026-07-10T09:20:25.238Z]     'Prefer': 'REDACTED'
+[2026-07-10T09:20:25.239Z]     'Accept': 'application/json'
+[2026-07-10T09:20:25.239Z]     'x-ms-client-request-id': '93d6bb3f-7c40-11f1-8ed4-00155d869ea7'
+[2026-07-10T09:20:25.239Z]     'User-Agent': 'azsdk-python-monitor-query/2.0.0 Python/3.12.3 (Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39)'
+[2026-07-10T09:20:25.239Z]     'Authorization': 'REDACTED'
+[2026-07-10T09:20:25.239Z] A body is sent with the request
+[2026-07-10T09:20:26.159Z] Response status: 200
+[2026-07-10T09:20:26.159Z] Response headers:
+[2026-07-10T09:20:26.159Z]     'Date': 'Fri, 10 Jul 2026 09:20:26 GMT'
+[2026-07-10T09:20:26.159Z]     'Content-Type': 'application/json; charset=utf-8'
+[2026-07-10T09:20:26.159Z]     'Content-Length': '136'
+[2026-07-10T09:20:26.159Z]     'Connection': 'keep-alive'
+[2026-07-10T09:20:26.159Z]     'via': 'REDACTED'
+[2026-07-10T09:20:26.159Z]     'X-Content-Type-Options': 'REDACTED'
+[2026-07-10T09:20:26.159Z]     'x-ms-request-id': '6075e80c-3cd9-4efd-b3ae-1a08db23520b'
+[2026-07-10T09:20:26.160Z]     'Access-Control-Allow-Origin': 'REDACTED'
+[2026-07-10T09:20:26.160Z]     'Access-Control-Expose-Headers': 'REDACTED'
+[2026-07-10T09:20:26.160Z]     'Strict-Transport-Security': 'REDACTED'
+[2026-07-10T09:20:26.161Z] Request URL: 'https://api.loganalytics.io/v1/workspaces/d0f3187b-ec35-4281-9cb6-52a34418236a/query'
+[2026-07-10T09:20:26.161Z] Request method: 'POST'
+[2026-07-10T09:20:26.161Z] Request headers:
+[2026-07-10T09:20:26.161Z]     'content-type': 'application/json'
+[2026-07-10T09:20:26.161Z]     'Content-Length': '1933'
+[2026-07-10T09:20:26.161Z]     'Prefer': 'REDACTED'
+[2026-07-10T09:20:26.161Z]     'Accept': 'application/json'
+[2026-07-10T09:20:26.161Z]     'x-ms-client-request-id': '9601257d-7c40-11f1-a837-00155d869ea7'
+[2026-07-10T09:20:26.161Z]     'User-Agent': 'azsdk-python-monitor-query/2.0.0 Python/3.12.3 (Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39)'
+[2026-07-10T09:20:26.161Z]     'Authorization': 'REDACTED'
+[2026-07-10T09:20:26.161Z] A body is sent with the request
+[2026-07-10T09:20:26.451Z] Response status: 200
+[2026-07-10T09:20:26.451Z] Response headers:
+[2026-07-10T09:20:26.451Z]     'Date': 'Fri, 10 Jul 2026 09:20:26 GMT'
+[2026-07-10T09:20:26.451Z]     'Content-Type': 'application/json; charset=utf-8'
+[2026-07-10T09:20:26.451Z]     'Content-Length': '556'
+[2026-07-10T09:20:26.451Z]     'Connection': 'keep-alive'
+[2026-07-10T09:20:26.451Z]     'via': 'REDACTED'
+[2026-07-10T09:20:26.451Z]     'X-Content-Type-Options': 'REDACTED'
+[2026-07-10T09:20:26.451Z]     'x-ms-request-id': 'b2c5361d-657a-4186-a38f-0f588e267931'
+[2026-07-10T09:20:26.451Z]     'Access-Control-Allow-Origin': 'REDACTED'
+[2026-07-10T09:20:26.451Z]     'Access-Control-Expose-Headers': 'REDACTED'
+[2026-07-10T09:20:26.451Z]     'Strict-Transport-Security': 'REDACTED'
+[2026-07-10T09:20:27.314Z] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 400 Bad Request"
+[2026-07-10T09:20:27.317Z] narrate_assessment failed; proceeding without narration
+[2026-07-10T09:20:27.318Z] Traceback (most recent call last):
+[2026-07-10T09:20:27.318Z]   File "/home/gonsalvr/dev/mcp-alert-triage-automation/function_app/function_app.py", line 344, in narrate_assessment
+[2026-07-10T09:20:27.318Z]     raw = llm(prompt)
+[2026-07-10T09:20:27.318Z]   File "/home/gonsalvr/dev/mcp-alert-triage-automation/function_app/function_app.py", line 322, in _default_llm_call
+[2026-07-10T09:20:27.318Z]     resp = client.messages.create(
+[2026-07-10T09:20:27.318Z]   File "/home/gonsalvr/dev/mcp-alert-triage-automation/function_app/.venv/lib/python3.12/site-packages/anthropic/_utils/_utils.py", line 294, in wrapper
+[2026-07-10T09:20:27.318Z]     return func(*args, **kwargs)
+[2026-07-10T09:20:27.318Z]   File "/home/gonsalvr/dev/mcp-alert-triage-automation/function_app/.venv/lib/python3.12/site-packages/anthropic/resources/messages/messages.py", line 1050, in create
+[2026-07-10T09:20:27.318Z]     return self._post(
+[2026-07-10T09:20:27.318Z]   File "/home/gonsalvr/dev/mcp-alert-triage-automation/function_app/.venv/lib/python3.12/site-packages/anthropic/_base_client.py", line 1536, in post
+[2026-07-10T09:20:27.318Z]     return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+[2026-07-10T09:20:27.318Z]   File "/home/gonsalvr/dev/mcp-alert-triage-automation/function_app/.venv/lib/python3.12/site-packages/anthropic/_base_client.py", line 1195, in request
+[2026-07-10T09:20:27.318Z]     raise self._make_status_error_from_response(response) from None
+[2026-07-10T09:20:27.318Z] anthropic.BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011Cct8UvVt1w68P1feTowXL'}
+[2026-07-10T09:20:27.318Z] Scored session c7df4d04-9bf7-45e7-a306-9f5bc38acfd6 as Critical (narration: none)
+[2026-07-10T09:20:28.560Z] AzureCliCredential.get_token succeeded
+[2026-07-10T09:20:28.561Z] DefaultAzureCredential acquired a token from AzureCliCredential
+[2026-07-10T09:20:29.513Z] Comment written for incident f03904b2-b858-4698-84f0-5b5779919b6e
+[2026-07-10T09:20:29.530Z] Executed 'Functions.triage' (Succeeded, Id=3cb8616b-0678-43a2-9e82-05571d35e0bc, Duration=7050ms)
+[2026-07-10T09:20:35.675Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+[2026-07-10T09:21:05.670Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+[2026-07-10T09:21:35.673Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+[2026-07-10T09:22:05.674Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+[2026-07-10T09:22:35.670Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+[2026-07-10T09:23:05.674Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+[2026-07-10T09:23:35.670Z] [Tag=''] Process reporting unhealthy: Unhealthy. Health check entries are {"azure.functions.web_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.script_host.lifecycle":{"status":"Healthy","description":null},"azure.functions.webjobs.storage":{"status":"Unhealthy","description":"Unable to access AzureWebJobsStorage","errorCode":null}}
+^C[2026-07-10T09:23:50.856Z] Detaching gRPC logging due to exception.
+[2026-07-10T09:23:50.860Z] Traceback (most recent call last):
+[2026-07-10T09:23:50.860Z]   File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+[2026-07-10T09:23:50.860Z]     return self._loop.run_until_complete(task)
+[2026-07-10T09:23:50.860Z]   File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+[2026-07-10T09:23:50.860Z]     return future.result()
+[2026-07-10T09:23:50.861Z]   File "/usr/lib/azure-functions-core-tools-4/workers/python/3.12/LINUX/X64/azure_functions_worker/main.py", line 78, in start_async
+[2026-07-10T09:23:50.861Z]     await disp.dispatch_forever()
+[2026-07-10T09:23:50.861Z]   File "/usr/lib/azure-functions-core-tools-4/workers/python/3.12/LINUX/X64/azure_functions_worker/dispatcher.py", line 207, in dispatch_forever
+[2026-07-10T09:23:50.861Z]     await forever
+[2026-07-10T09:23:50.861Z] asyncio.exceptions.CancelledError
+[2026-07-10T09:23:50.861Z] During handling of the above exception, another exception occurred:
+[2026-07-10T09:23:50.861Z] Traceback (most recent call last):
+[2026-07-10T09:23:50.861Z]   File "/usr/lib/azure-functions-core-tools-4/workers/python/3.12/LINUX/X64/worker.py", line 71, in <module>
+[2026-07-10T09:23:50.861Z]     main.main()
+[2026-07-10T09:23:50.862Z]   File "/usr/lib/azure-functions-core-tools-4/workers/python/3.12/LINUX/X64/azure_functions_worker/main.py", line 61, in main
+[2026-07-10T09:23:50.862Z]     return asyncio.run(start_async(
+[2026-07-10T09:23:50.862Z]   File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+[2026-07-10T09:23:50.862Z]     return runner.run(main)
+[2026-07-10T09:23:50.862Z]   File "/usr/lib/python3.12/asyncio/runners.py", line 123, in run
+[2026-07-10T09:23:50.862Z]     raise KeyboardInterrupt()
+[2026-07-10T09:23:50.862Z] KeyboardInterrupt
