@@ -424,3 +424,88 @@ The "fully corroborated realized breach" tier (ingestion>0 AND RealizedBreach) h
 ### Next
 - Sprint 4 -- the bounded LLM: it NARRATES the deterministic score (natural-language explanation for the analyst) but does NOT make the severity decision. Determinism stays load-bearing; the model only adds readable explanation. Every prior sprint built the trustworthy deterministic core precisely so the LLM can be added safely -- as narrator, not decider.
 - Before any GitHub publish of the playbook: close Gate 2 (function key -> managed identity).
+
+---
+
+## 2026-07-14 — MILESTONE: Sprint 4 COMPLETE (bounded LLM narrator; the pipeline now explains — safely — and runs fully autonomously)
+
+**Work span:** 2026-07-08 to 2026-07-14 (UTC). Design → bounded narrator build (5 layers) → local + deployed proof of BOTH LLM paths (real narration + fail-safe against a real API error) → first fully-autonomous end-to-end run → a real commit-latency race discovered, mis-diagnosed, MEASURED, corrected, and the corrected fix verified.
+
+### What shipped
+The pipeline now **explains its decision** — a bounded LLM narrates the already-decided deterministic severity in natural language, additive and clearly labeled, and it does so with no authority to change the verdict. And the full chain now runs **autonomously end-to-end**: detection → incident → automation rule → playbook (with a commit-latency delay) → Function → reconstruct → score → narrate → managed-identity comment, no human in the loop. Flow: incident → SessionId (Sprint 2) → gather facts (Sprint 3) → deterministic score (Sprint 3, authoritative) → **bounded LLM narration (Sprint 4, explanatory)** → comment with both blocks.
+
+### The bounded narrator (5 layers) — hardening around ONE principle
+`narrate_assessment(severity, facts) -> str | None`. Severity is an INPUT (from `score_session`); the function returns only a narration string or None. Five layers:
+- **L1 sanitize** — aggressively strip the attacker-controlled evidence (recipients, rule names) to a whitelisted char set; removes STRUCTURAL injection vectors (newlines, brackets, tags, control chars). Replaces stripped chars with a space (keeps legit multi-part data readable, not fused).
+- **L2 isolate** — the sanitized evidence goes in a delimited `<untrusted_evidence>` block the model is told to describe, never obey.
+- **L3 narrow task** — explain the GIVEN severity in 2–3 sentences; never assign, never recommend actions.
+- **L4 validate** — output must be a non-empty string, hard length cap (600 chars).
+- **L5 fail-safe** — ANY exception → return None → caller proceeds with the deterministic-only comment.
+
+### The architectural guarantee (the thesis, stated) — the correction that mattered
+Char-stripping does NOT neutralize word-based injection ("IGNORE PREVIOUS INSTRUCTIONS" is letters + spaces; it survives). Proven empirically. So L1 is **hardening, not the guarantee**. The GUARANTEE is architectural: severity flows `score_session` → `_build_comment` DIRECTLY; it is never in the LLM's output path. Even a fully-compromised model can only produce a labeled, subordinate wrong sentence beside a correct authoritative verdict — it cannot change the severity, cannot trigger an action. **Prompt injection is unsolvable by filtering (malicious input is natural language, indistinguishable from valid data at the character level); the robust defense is constrained capability, not perfect input sanitization.** Hardening reduces the LIKELIHOOD of a bad narration; architecture eliminates the POSSIBILITY of a bad verdict.
+
+### Trust labeling as a security control
+`_build_comment` writes two explicitly-labeled blocks: `[Rule-based - Non AI generated] Severity: …` (authoritative, always first) and `[AI-generated explanation -- narration only, does not affect the severity above] …` (additive, only if narration present). Labeling both sides means an analyst never has to INFER which half is authoritative — the label itself is the control. If the LLM fails, the comment is exactly the deterministic pre-assessment; the authoritative content never degrades.
+
+### BOTH LLM paths proven against REAL conditions (branch coverage)
+- **Fail-safe path** (2026-07-10): the Anthropic API returned a REAL `400 - credit balance too low` error. L5 caught it, logged the traceback, and the pipeline wrote the deterministic-only comment and succeeded (`Executed 'triage' (Succeeded)`). Real fault-injection, not a mock — stronger than the earlier stubbed test. (figure_18)
+- **Happy path** (2026-07-10 → 07-14): deployed, managed identity, real Claude narration appended and correctly labeled. (figures 16, 17 manual-invoked; figures 20, 21 fully autonomous.)
+
+### THE MAIN FINDING — a commit-latency race: discovered, MIS-DIAGNOSED, measured, corrected, verified
+**Discovery (07-10):** first fully-autonomous run wrote a DEGRADED comment ("no SessionId could be reconstructed") — managed identity fired ~12s after incident creation, before reconstruction's inputs were queryable. Real race, surfaced only under autonomous full-speed execution (manual curl tests always passed because the human introduces natural delay).
+
+**Wrong fix (07-13):** hypothesized `SecurityAlert` commit latency; added a bounded in-Function retry (45s wait, max 2 attempts). Deployed and re-ran → STILL degraded (comment now ~58s out, so the retry demonstrably FIRED — it just didn't help). The hypothesis fit the symptom but was never measured.
+
+**Measurement (07-13):** `ingestion_time()` on both tables the reconstruction join depends on:
+```
+SecurityAlert       commit lag = 32s
+SecurityIncident    commit lag = 77s   <- the binding constraint
+```
+The query STARTS from `SecurityIncident` (inner join); its Log Analytics table copy lagged the ARM incident resource by 77s. The 45s retry fired at ~T+57s — 18s too early. `AlertIds` WAS populated, so empty-linkage was ruled out. Root cause was the incident-table commit latency, not the alert's.
+
+**Conceptual error caught:** "the incident exists in ARM" (queried at T+0) != "the incident is queryable in KQL" (T+77s). Different systems, different latencies; the reconstruction depends on the slower one.
+
+**Corrected fix (07-14):** a 120s `Delay` action in the playbook, BEFORE the HTTP call to the Function (right layer: the orchestrator shouldn't invoke the responder before the responder's input exists; and a playbook delay avoids the Logic App's ~120s synchronous-HTTP timeout that an in-Function sleep would risk). The 45s in-Function retry is retained as a variance backstop. **Verified:** incident #18, autonomous run, comment landed ~139s after creation (120s delay + 8s measured chain latency + Function work), and — the key signal — it was a scored `CRITICAL` + narrated comment, NOT the degraded message. The degraded→scored flip is the fix, confirmed.
+
+### TWO more corrections caught by verification this sprint
+**1. `Trigger: Manual` in the Defender activity pane is NOT evidence of manual invocation.** Initially read it as "the Function was curl-invoked." Falsified: incident #18's comment shows `Trigger: Manual` yet was written by a run we KNOW was autonomous. The field describes HOW the comment was added (external app via ARM comments API) — every Function-written comment reads Manual regardless of what invoked the Function. **Autonomy is evidenced by the Logic App run history, not this field** (figure_22: Sentinel-incident trigger → Delay 2m → For each → HTTP, all green, run started off the incident event).
+**2. Chain-startup latency measured at 8s, not the ~2s assumed** (incident #18 created 14:28:08 → playbook run started 14:28:16). Small, but the delay-margin math should use the measured value.
+
+### Progression (the engineering story, three data points)
+```
+Jul 10   no delay        comment @ +12s    DEGRADED (race discovered)
+Jul 13   45s retry       comment @ +58s    DEGRADED (retry fired; wrong table targeted)
+Jul 14   120s delay+retry comment @ +139s  CRITICAL scored + narrated  ✓
+```
+
+### Engineering notes
+- `_reconstruct_session_id` refactored into a retry wrapper + `_attempt_reconstruct_session_id` (single-shot). Separates "how to retry" from "what to try"; retry policy lives in one place; the query stays a plain testable function.
+- `narrate_assessment` bounding was tested adversarially (stubbed compromise, outage, garbage, overflow) AND against the real API. Worst-case verified: a fully-injected LLM only corrupts the labeled narration, never the verdict.
+- API key: `os.environ["ANTHROPIC_API_KEY"]`, from gitignored `local.settings.json` locally / Function App app setting when deployed. Never in code, never committed. `anthropic` added to requirements.txt (commented: bounded narrator; explains, never decides).
+
+### Artifacts produced
+- Sprint 4 `function_app.py` (496 lines: narrator + retry) + requirements.txt (`anthropic`)
+- figure_16/17 — deployed narrated assessment, CLI + Defender UI (manual-invoked)
+- figure_18 — fail-safe graceful degradation vs. a REAL zero-credits API error
+- figure_19 — autonomous run degraded comment (the race; incident #9) + 12s gap
+- figure_20/21 — fully-autonomous narrated assessment, CLI + Defender UI (incident #18)
+- figure_22 — Logic App run history: autonomous invocation + the 120s Delay executing
+- `FINDING_alert_commit_race.md` — the two-stage race diagnosis (wrong hypothesis retained + measured correction)
+- Updated function_app flow diagram (draw.io + docx) reflecting the narrator, retry, and architectural bound
+
+### SC-200 / concept coverage this sprint
+- AI security: prompt injection (OWASP LLM01) unsolvable by filtering; structural injection vectors (newlines/brackets/tags/control chars) forge the code/data boundary; hardening (probabilistic) vs architectural guarantee (eliminates possibility); constrain capability, don't just filter input; provenance/trust labeling as a control; second-order injection (attacker data flowing into the defender's own analysis LLM).
+- Resilience: transient-fault handling & the Retry pattern; bounded retries (never unbounded); retry-then-degrade; graceful degradation / enhancement-not-dependency; adversarial/negative testing; real fault-injection > mocks; branch coverage of BOTH paths of an external dependency.
+- Distributed systems: race conditions surface under autonomous timing, pass manual tests; ingestion/commit latency (`ingestion_time()` vs `TimeGenerated`); ARM resource vs Log Analytics table copy are different systems with different latencies; an inner join needs BOTH sides committed; schedule the response at the right layer (orchestrator, not responder).
+- Investigation/epistemics: a hypothesis that explains a symptom is not a verified cause; MEASURE latency, don't infer it; falsify with data (`Trigger: Manual`; the wrong-table fix); the run history — not a UI field — evidences autonomy.
+- Software: separation of concerns enables extension without disturbing (the narrator slotted into a seam); pure functions; secret management (env var / app setting, never in code/committed).
+- Deployment: "Remote build succeeded" != live (confirm by behavior); autosaved Draft != Published (Logic App); copied file != right file (verify line count + grep, not the `cp` exit).
+
+### OPEN GATES
+1. ~~SessionId placeholder~~ — closed Sprint 2.
+2. **Function key → managed-identity swap** — STILL OPEN. Playbook→Function hop uses a function key (shared secret in URL). Close before any public GitHub publish of the playbook definition. (Repo is currently private / not yet published, so no live exposure.)
+
+### Next
+- Arc COMPLETE (use → defend → analyze → detect → **respond**). Sprint 5 = hardening/packaging for publication: close Gate 2, then public GitHub repo with the arc narrative.
+- Optional future work (noted in the finding): read incident→alert linkage from the ARM API (immediately consistent) instead of the `SecurityIncident` table, removing the 77s lag from the critical path entirely.
