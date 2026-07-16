@@ -16,7 +16,7 @@
         "HTTP": {
           "inputs": {
             "authentication": {
-              "audience": "api://46439dbd-d726-432c-afcc-0488700ab7e3",
+              "audience": "api://<function-app-client-id>",
               "type": "ManagedServiceIdentity"
             },
             "body": {

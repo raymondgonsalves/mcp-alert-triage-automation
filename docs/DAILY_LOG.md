@@ -131,7 +131,7 @@ The first pipeline link is live and verified: a deployed Azure Function authenti
 
 ### Gotchas / scar-tissue lessons
 - **Provider registration masquerading as auth failure.** `Microsoft.Storage` was `NotRegistered` on the subscription (first time storage was used). Storage calls failed with a misleading `SubscriptionNotFound` error, which sent us chasing a tenant/login problem. Lesson: if `az account show` works but a resource-type call says "subscription not found," check the *resource provider* registration before assuming an auth issue. Fixed with `az provider register --namespace Microsoft.Storage --wait`.
-- **Tenant context confusion (side-quest).** The subscription's real home tenant is `a3e85d53-0605-4e15-8568-12acdaf34332`, NOT `gonsalvesraygmail.onmicrosoft.com` (the latter is a directory I'm a guest in). The guest-account split is the same root cause as the earlier Defender-portal "wrong tenant" redirect. For explicit `az login --tenant`, use the GUID `a3e85d53-…`.
+- **Tenant context confusion (side-quest).** The subscription's real home tenant is `<home-tenant-id>`, NOT `gonsalvesraygmail.onmicrosoft.com` (the latter is a directory I'm a guest in). The guest-account split is the same root cause as the earlier Defender-portal "wrong tenant" redirect. For explicit `az login --tenant`, use the GUID `<home-tenant-id>…`.
 - **Comment-name collision.** Using `SessionId` as the comment *name* meant the deployed function (managed identity) tried to PUT to the same comment name my local test had already created — Sentinel blocked it: "Only the user that created the comment is allowed to edit it." Fix: unique comment name per invocation (`skeleton-{uuid.uuid4().hex}`); SessionId stays in the comment *body* for traceability. Correct design anyway — in production the pipeline comments many times per incident.
 - **Portal doesn't show API-written comments** in the incident Comments panel (only ones made via its own UI, until a deep refresh). Verify writes via the `az rest` GET on `.../comments`, not the portal. Relevant for the eventual demo.
 
@@ -165,7 +165,7 @@ Sprint 1 is the pipeline plumbing only (Function App → managed identity → de
 - Function App: `func-mcp-triage-lab-rg`, invoke URL `https://func-mcp-triage-lab-rg.azurewebsites.net/api/triage` (auth_level=FUNCTION, needs key for now)
 - Managed identity principal: `e5c28c8b-3b63-4e44-883a-858b185ff63b` (has Sentinel Responder + Log Analytics Reader on workspace)
 - Test incident (Rule 4): GUID `71ca1ae3-e897-4176-b19c-b42a4c04c0d6`, SessionId `75682b09-de40-4138-9a37-358265f95b89`
-- Subscription `5faad216-...`, real home tenant `a3e85d53-...` (NOT the onmicrosoft.com guest dir — use the GUID for az login --tenant)
+- Subscription `5faad216-...`, real home tenant `<home-tenant-id>...` (NOT the onmicrosoft.com guest dir — use the GUID for az login --tenant)
 - Verify comment writes via `az rest` GET on .../comments — the Defender portal Comments panel does NOT show API-written comments.
 
 **Other open doc threads (not blocking):** interface contract `ToolDescLength` note already in repo; project plan committed; triage-repo README status line + earlier 0622 log entry still minor-stale.
@@ -216,7 +216,7 @@ Together these narrate: routed -> executed successfully -> outcome written auton
 - **Portal split #1 — incident trigger only in Standard rules.** The Defender portal's *Enhanced* automation rules exposed only "When alert is created." Incident-level triggers live in **Standard rules**. Concept: alert-level vs incident-level automation are different surfaces post-unification. Exam-relevant (unified platform).
 - **Portal split #2 — Azure portal Automation redirects to Defender.** Workspace is fully onboarded to the unified platform; the classic Azure Sentinel automation page redirects. Concept: after Defender onboarding, some config moves; "it's on the other portal."
 - **Portal split #3 — "Manage playbook permissions" opens docs, not a panel.** The Defender portal stubs the RBAC-granting UI. Worked around it via CLI role assignment (which is what the button does underneath). Concept: every "grant permissions" GUI = an `az role assignment create`.
-- **Tenant gremlin (recurring).** "Limited or No Access / not a member of this tenant" in the portal — same guest-account (`#EXT#`) root cause as the CLI's `SubscriptionNotFound` earlier. Fix: force tenant `a3e85d53-...` via `https://portal.azure.com/#@a3e85d53-...` (NOT the onmicrosoft.com guest dir). Do NOT click "I acknowledge" (that drops you in as a no-access passthrough user) — click "Sign out" and re-enter on the right tenant.
+- **Tenant gremlin (recurring).** "Limited or No Access / not a member of this tenant" in the portal — same guest-account (`#EXT#`) root cause as the CLI's `SubscriptionNotFound` earlier. Fix: force tenant `<home-tenant-id>...` via `https://portal.azure.com/#@<home-tenant-id>...` (NOT the onmicrosoft.com guest dir). Do NOT click "I acknowledge" (that drops you in as a no-access passthrough user) — click "Sign out" and re-enter on the right tenant.
 - **Service principal empty `id` on table query.** `az ad sp show ... -o table` returned name but blank id (guest-tenant resolution flakiness); `--query id -o tsv` resolved it cleanly (`cad754b8-...`). Reference SPs by stable app ID (`98785600-...`, global constant) when name/object resolution is unreliable.
 - **Status codes told the debugging story.** 401 "only the author can edit" (4xx = my request's fault; comment-name collision -> fixed with uuid) progressed to 201 Created (2xx success, new resource). 4xx = caller's fault, 5xx = server's fault — the fastest triage of an API failure.
 
@@ -529,7 +529,7 @@ secret. Gate 2: swap the hop to identity-based auth and remove the key before an
 ### What shipped (end state)
 - Playbook HTTP-action URI is the bare endpoint — `.../api/triage`, **no `?code=`**.
 - Playbook authenticates with its **system-assigned managed identity**, presenting an Entra
-  token for audience `api://46439dbd-...` (the Function's app-registration client ID).
+  token for audience `api://<function-app-client-id>...` (the Function's app-registration client ID).
 - Function App has **Easy Auth** (Microsoft identity provider) enabled: require
   authentication, unauthenticated → **HTTP 401**, tenant-restricted to home tenant.
 - Function `authLevel` **FUNCTION → ANONYMOUS** (line 412) — required with Easy Auth in
@@ -549,13 +549,13 @@ secret. Gate 2: swap the hop to identity-based auth and remove the key before an
 ### Gotchas caught (each cost time; each worth remembering)
 **1. Principal/object ID vs application/client ID.** Easy Auth "Allowed client applications"
 matches the token's `appid` claim = the identity's **Application (client) ID**, NOT its
-principal/object ID. The playbook's `principalId` is `60ba3d22-...`; the value the allow-list
-needs is its `appId` `3101340b-...` (via `az ad sp show --id <principalId> --query appId`).
+principal/object ID. The playbook's `principalId` is `<playbook-principal-id>...`; the value the allow-list
+needs is its `appId` `<playbook-app-id>...` (via `az ad sp show --id <principalId> --query appId`).
 Using the principal ID would have been a silent 401. (principalId = RBAC; appId = token
 audience/allow-list.)
 
 **2. The `api://` audience prefix.** The Function's `allowedAudiences` is
-`api://46439dbd-...`; the playbook's HTTP-action Audience must match exactly (with the
+`api://<function-app-client-id>...`; the playbook's HTTP-action Audience must match exactly (with the
 `api://`), not the bare GUID.
 
 **3. `az webapp auth show` gave a misleading v1 projection of a v2 config.** It reported
@@ -581,7 +581,7 @@ would risk clobbering the v2 provider config — used the portal for v2 auth fie
 - figure_24 — old (rotated) function key → 401 (key auth retired)
 - figure_25 — Logic App run history: HTTP action green via managed identity (incident #22)
 - figure_26 — playbook HTTP action inputs: keyless URI + `ManagedServiceIdentity` auth,
-  audience `api://46439dbd-...`
+  audience `api://<function-app-client-id>...`
 - `docs/GATE2_managed_identity_swap.md` — full swap writeup (sequence, gotchas, lessons)
 
 ### SC-200 / concept coverage

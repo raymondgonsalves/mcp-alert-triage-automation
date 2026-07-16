@@ -50,8 +50,8 @@ identity-based auth and remove the key **before** any public publish.
 ### 1. Principal/object ID vs application/client ID
 The Easy Auth "Allowed client applications" field matches against the **`appid` claim** in
 the incoming token, which is the managed identity's **Application (client) ID** — NOT its
-principal/object ID. The playbook's `identity.principalId` (`60ba3d22-...`) is the object ID;
-its allow-list value is a *different* GUID (`3101340b-...`), retrieved via:
+principal/object ID. The playbook's `identity.principalId` (`<playbook-principal-id>...`) is the object ID;
+its allow-list value is a *different* GUID (`<playbook-app-id>...`), retrieved via:
 ```bash
 az ad sp show --id <principalId> --query "{appId:appId, objectId:id, displayName:displayName}"
 ```
@@ -60,7 +60,7 @@ identity — use the `appId` for the allow-list, the `principalId` for role assi
 
 ### 2. The `api://` audience prefix
 The Function's `allowedAudiences` is `api://<client-id>` (with the `api://` prefix), so the
-playbook's HTTP-action Audience must match exactly — `api://46439dbd-...`, not the bare GUID.
+playbook's HTTP-action Audience must match exactly — `api://<function-app-client-id>...`, not the bare GUID.
 A mismatch is a 401.
 
 ### 3. `az webapp auth show` gives a misleading v1 projection of a v2 config
@@ -99,7 +99,7 @@ writes v2 natively) — matching the tool to the task.
 - figure_24 — old (rotated) function key → 401 (key auth retired)
 - figure_25 — Logic App run history: HTTP action green via managed identity (incident #22 run)
 - figure_26 — playbook HTTP action inputs: keyless URI + `ManagedServiceIdentity` auth,
-  audience `api://46439dbd-...`
+  audience `api://<function-app-client-id>...`
 
 ## Remaining (Sprint 5 packaging)
 
