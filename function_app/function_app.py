@@ -409,7 +409,7 @@ def _build_comment(session_id: str, severity: str, reasoning: str, facts: dict,
     return comment
 
 
-@app.route(route="triage", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="triage", auth_level=func.AuthLevel.ANONYMOUS)
 def triage(req: func.HttpRequest) -> func.HttpResponse:
     """Sprint 4 — deterministic scoring + bounded LLM narration.
 
