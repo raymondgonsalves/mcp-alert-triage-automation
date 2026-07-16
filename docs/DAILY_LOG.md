@@ -609,3 +609,8 @@ would risk clobbering the v2 provider config — used the portal for v2 auth fie
   (use → defend → analyze → detect → respond).
 - Optional (from the race finding): read incident→alert linkage from the ARM API
   (immediately consistent) to drop the `SecurityIncident` 77s lag from the critical path.
+
+### In-flight (resume 2026-07-15+): playbook PLACEHOLDER cleanup
+- Removing dead `"sessionId": "PLACEHOLDER-chain-test"` from playbook HTTP body (Function ignores it — reconstructs session itself; confirmed no body read of sessionId).
+- STEPS LEFT: (1) portal edit body to just `incidentArmId` [no trailing comma], Save+Publish; (2) re-run forwarder to verify pipeline still writes scored+narrated comment; (3) re-export `playbook/pb-mcp-triage-skeleton.definition.json`; (4) re-scan (no code=, MI auth present, no secrets); (5) commit `docs(sprint5): remove vestigial sessionId placeholder from playbook body`.
+- Then Sprint 5 remaining: docs polish, optional demo video, public publish.
