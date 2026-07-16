@@ -614,3 +614,4 @@ would risk clobbering the v2 provider config — used the portal for v2 auth fie
 - Removing dead `"sessionId": "PLACEHOLDER-chain-test"` from playbook HTTP body (Function ignores it — reconstructs session itself; confirmed no body read of sessionId).
 - STEPS LEFT: (1) portal edit body to just `incidentArmId` [no trailing comma], Save+Publish; (2) re-run forwarder to verify pipeline still writes scored+narrated comment; (3) re-export `playbook/pb-mcp-triage-skeleton.definition.json`; (4) re-scan (no code=, MI auth present, no secrets); (5) commit `docs(sprint5): remove vestigial sessionId placeholder from playbook body`.
 - Then Sprint 5 remaining: docs polish, optional demo video, public publish.
+  - NOTE: playbook/pb-mcp-triage-skeleton.definition.json already exported (PLACEHOLDER version, untracked) — re-export clean and commit once on resume.
