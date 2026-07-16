@@ -1,5 +1,7 @@
 # MCP Alert Triage Automation
 
+![End-to-end pipeline](docs/figures/architecture_overview.svg)
+
 Automated investigation and response for Microsoft Sentinel incidents raised by the
 [MCP Tool Shadowing Detection Pack](https://github.com/raymondgonsalves/mcp-tool-shadowing-detections).
 
@@ -9,7 +11,16 @@ and either auto-close with an explanation or escalate with the evidence assemble
 bounded LLM writes a plain-English incident summary; all decisions are made by
 deterministic code, never the model.
 
->> **Status:** Sprints 1–4 complete — the arc is closed. A detection incident triggers an automation rule → Logic App playbook → Azure Function (managed identity) that reconstructs the SessionId, gathers per-session facts, applies a deterministic recipient-aware severity model, has a **bounded LLM narrate** that verdict in plain English, and writes the labeled pre-assessment back to the incident — fully autonomously, zero human intervention. Both LLM paths are proven against real conditions (real narration, and graceful degradation against a real API failure), and a real commit-latency race discovered during the first autonomous run was measured and fixed. See `docs/DAILY_LOG.md` for the build record and `docs/FINDING_alert_commit_race.md` for the race analysis. **Gate 2 (playbook→Function auth) is closed** — the hop is now credential-free (managed identity / Entra), verified by a real autonomous run; see `docs/GATE2_managed_identity_swap.md`.
+> **Status: engineering complete (Sprints 1–4); Sprint 5 is packaging, no new code.**
+> A detection incident triggers an automation rule → Logic App playbook → Azure Function
+> (managed identity) that reconstructs the SessionId, gathers per-session facts, applies a
+> deterministic recipient-aware severity model, has a **bounded LLM narrate** that verdict in
+> plain English, and writes the labeled pre-assessment back to the incident — fully
+> autonomously, zero human intervention. Both LLM paths are proven against real conditions
+> (real narration, and graceful degradation against a real API failure), and a real
+> commit-latency race discovered during the first autonomous run was measured and fixed.
+> The playbook→Function hop is credential-free (managed identity / Entra). See the
+> [documentation map](#documentation) for the build record, the race analysis, and the auth swap.
 
 ## The portfolio arc
 
@@ -17,7 +28,13 @@ This is the fifth and final artifact in a connected body of work on agentic-AI s
 **use → defend → analyze → detect → respond.** This project is *respond* — the
 operational follow-through to the detection pack.
 
-## Architecture (overview)
+## Architecture
+
+![Function triage flow](docs/figures/function_app_triage_flow.svg)
+
+*The red path — `score_session → _build_comment`, bypassing the LLM entirely — is the
+bounded-model guarantee made visual: severity is decided by deterministic code and never
+routes through the model.*
 
 ```
 Detection rule fires → Sentinel incident
@@ -38,7 +55,14 @@ the severity or trigger an action.
 
 ## Documentation
 
-- `docs/` — design spec, interface contract, architecture diagram, daily log
+Where to start, depending on what you want to know:
+
+- **How it was built** — [`docs/DAILY_LOG.md`](docs/DAILY_LOG.md), the sprint-by-sprint build record.
+- **Does it really work** — [`docs/FINDING_alert_commit_race.md`](docs/FINDING_alert_commit_race.md), the commit-latency race that surfaced on the first autonomous run, how it was measured, and the fix.
+- **How the credential-free auth works** — [`docs/GATE2_managed_identity_swap.md`](docs/GATE2_managed_identity_swap.md), the function-key → managed-identity swap.
+- **The design** — the [interface contract](docs/INTERFACE_CONTRACT.md) and the architecture diagrams above.
+- **The playbook itself** — [`playbooks/pb-mcp-triage-skeleton.definition.json`](playbooks/pb-mcp-triage-skeleton.definition.json), the exported Logic App definition.
+- **Evidence** — [`docs/figures/`](docs/figures/), the captured runs and portal states referenced throughout the log.
 
 ## Build status by sprint
 
@@ -49,28 +73,27 @@ the severity or trigger an action.
 | 2 | Deterministic session reconstruction (incident → alert → SessionId, server-side KQL) | Complete & verified |
 | 3 | Deterministic recipient-aware scoring (RealizedBreach → Critical) | Complete & verified |
 | 4 | Bounded LLM narrator (explains the deterministic verdict; never decides) + commit-latency race fix | Complete & verified |
-| 5 | Docs, figures, demo video; export playbook definition; public publish | Next |
+| 5 | Packaging for publish (docs, figures, exported playbook definition, demo) | In progress |
 
-**Gate 2 (playbook→Function auth) — CLOSED 2026-07-15.** The playbook→Function hop no longer
-uses a function key; it authenticates by managed identity (Microsoft Entra / Easy Auth). The
-exposed key was rotated and confirmed dead. See `docs/GATE2_managed_identity_swap.md`.
+## Security
 
-## Open gates
+**Credential-free playbook→Function auth (Gate 2 — closed 2026-07-15).**
+The playbook previously called the Function with a **function key** in the URI (`?code=`),
+which would have published the secret if the playbook definition were exported. This was
+swapped to **managed-identity auth** (Microsoft Entra / Easy Auth): the playbook presents its
+managed identity, the Function validates the token and rejects everything else with 401, and
+the old function key was rotated (the previous value now returns 401). Verified by a real
+autonomous run (incident #22, key-free). The exported playbook definition in this repo is
+therefore key-free by construction; it was secret-scanned before commit. See
+[`docs/GATE2_managed_identity_swap.md`](docs/GATE2_managed_identity_swap.md).
 
-> **✓ Gate 2 — CLOSED 2026-07-15 — playbook→Function auth is now credential-free.**
-> The playbook previously called the Function with a **function key** in the URI (`?code=`),
-> which would have published the secret if the playbook definition were exported. This was
-> swapped to **managed-identity auth** (Microsoft Entra / Easy Auth): the playbook presents
-> its managed identity, the Function validates the token and rejects everything else with
-> 401, and the function key was rotated (the old value now returns 401). Verified by a real
-> autonomous run (incident #22, key-free). See `docs/GATE2_managed_identity_swap.md`.
->
-> **Remaining before publishing the playbook definition (Sprint 5):** exporting the ARM/Logic
-> App definition to this repo is now safe (no key in the URI), but the export must still be
-> scanned to confirm no `?code=` remnant and that the auto-created
-> `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET` app-setting *value* is never committed (the
-> setting name is harmless; the value must not be exported).
-
+**A note on identifiers.**
+Resource, tenant, and object identifiers in this repository are redacted-forward to
+placeholders as recon-hygiene. Commits prior to the redaction may contain lab
+tenant/client/principal IDs in history — **none are credentials.** The pipeline uses
+managed-identity authentication with no stored secrets; all such values are Microsoft Entra
+object IDs or resource identifiers that grant no access without a separate credential and
+RBAC assignment. The lab environment is ephemeral.
 
 ## Verifying the pipeline
 
