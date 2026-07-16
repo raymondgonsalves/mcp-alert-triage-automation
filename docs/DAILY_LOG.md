@@ -510,3 +510,102 @@ Jul 14   120s delay+retry comment @ +139s  CRITICAL scored + narrated  ✓
 ### Next
 - Arc COMPLETE (use → defend → analyze → detect → **respond**). Sprint 5 = hardening/packaging for publication: close Gate 2, then public GitHub repo with the arc narrative.
 - Optional future work (noted in the finding): read incident→alert linkage from the ARM API (immediately consistent) instead of the `SecurityIncident` table, removing the 77s lag from the critical path entirely.
+
+---
+
+## 2026-07-15 — GATE 2 CLOSED: playbook→Function auth swapped from function key to managed identity (the pipeline is now credential-free and publish-ready)
+
+**Work span:** 2026-07-15 (~1h50m focused block). Swapped the last shared secret in the
+autonomous chain — the function key the playbook used to call the Function — for
+managed-identity / Microsoft Entra (Easy Auth) authentication, then rotated the exposed key.
+This was the final engineering blocker before the repo can be published.
+
+### Why it mattered
+The playbook (`pb-mcp-triage-skeleton`) called the Function (`func-mcp-triage-lab-rg`) with a
+**function key in the request URI** (`?code=<key>`). That key lives in the playbook's
+ARM/Logic App definition — so exporting that definition to a public repo would publish the
+secret. Gate 2: swap the hop to identity-based auth and remove the key before any publish.
+
+### What shipped (end state)
+- Playbook HTTP-action URI is the bare endpoint — `.../api/triage`, **no `?code=`**.
+- Playbook authenticates with its **system-assigned managed identity**, presenting an Entra
+  token for audience `api://46439dbd-...` (the Function's app-registration client ID).
+- Function App has **Easy Auth** (Microsoft identity provider) enabled: require
+  authentication, unauthenticated → **HTTP 401**, tenant-restricted to home tenant.
+- Function `authLevel` **FUNCTION → ANONYMOUS** (line 412) — required with Easy Auth in
+  front; the identity check moved to the Easy Auth layer, so "anonymous" is correct and *more*
+  secure, not "open" (unauthenticated calls still 401).
+- Old function key **rotated**; the exposed value (pasted mid-session, so treated as
+  compromised) now returns 401, as does any key.
+
+### Verified against a real autonomous run
+- Incident #22, GUID `61cfe118-b9e0-4740-b267-309a018ab50e`, created 17:57:42Z.
+- Comment written 18:00:01Z (~139s: 120s delay + chain + work), scored **CRITICAL** + real
+  narration, authored by the managed identity — **no key in any hop**.
+- The comment landing at all is proof the token was accepted; a failed auth would have 401'd
+  the HTTP action with no comment written.
+- Old key → 401 confirms key auth is fully retired.
+
+### Gotchas caught (each cost time; each worth remembering)
+**1. Principal/object ID vs application/client ID.** Easy Auth "Allowed client applications"
+matches the token's `appid` claim = the identity's **Application (client) ID**, NOT its
+principal/object ID. The playbook's `principalId` is `60ba3d22-...`; the value the allow-list
+needs is its `appId` `3101340b-...` (via `az ad sp show --id <principalId> --query appId`).
+Using the principal ID would have been a silent 401. (principalId = RBAC; appId = token
+audience/allow-list.)
+
+**2. The `api://` audience prefix.** The Function's `allowedAudiences` is
+`api://46439dbd-...`; the playbook's HTTP-action Audience must match exactly (with the
+`api://`), not the bare GUID.
+
+**3. `az webapp auth show` gave a misleading v1 projection of a v2 config.** It reported
+`unauthenticatedClientAction: RedirectToLoginPage` and null `globalValidation`, while the
+portal (v2-native) showed "Return HTTP 401." Resolved by testing ACTUAL BEHAVIOR:
+`curl` the endpoint unauthenticated → **401** = the setting IS in effect; the CLI report was
+the artifact. Also: `az webapp auth update --action` is v1-only (no `Return401` value) and
+would risk clobbering the v2 provider config — used the portal for v2 auth fields instead.
+
+### Lessons (recurring themes, reinforced)
+- Two IDs, two purposes: application/client ID for token audience + allow-list; principal ID
+  for RBAC. Confusing them = silent 401.
+- Behavior over reports: portal and CLI disagreed (and one was internally inconsistent); the
+  running system's HTTP response settled it. When dashboards conflict, measure behavior.
+- Match the tool to the task: a v1-era CLI command can't express (and can damage) a v2 auth
+  config; the portal writes v2 natively.
+- Credential hygiene: rotate anything that leaks (the key was pasted, so it was rotated);
+  Azure redacted the new key in CLI output (`value: null`) — good default.
+- "Deployed/saved ≠ live": the authLevel redeploy and the playbook auth change both needed
+  explicit confirmation (publish the Logic App draft; verify behavior, not the build message).
+
+### Artifacts
+- figure_24 — old (rotated) function key → 401 (key auth retired)
+- figure_25 — Logic App run history: HTTP action green via managed identity (incident #22)
+- figure_26 — playbook HTTP action inputs: keyless URI + `ManagedServiceIdentity` auth,
+  audience `api://46439dbd-...`
+- `docs/GATE2_managed_identity_swap.md` — full swap writeup (sequence, gotchas, lessons)
+
+### SC-200 / concept coverage
+- Identity & auth: managed identity = credential-free M2M auth; Microsoft Entra / Easy Auth
+  (App Service Authentication) as a token-validation layer in front of a Function;
+  authentication vs authorization; the `api://` audience; app-registration client ID vs
+  managed-identity principal ID; the token `appid` claim.
+- Azure ops: Easy Auth v2 vs v1 CLI surface mismatch; portal-vs-CLI ground-truth
+  reconciliation; key rotation; unauthenticated-action (401 for APIs vs redirect for
+  websites).
+- Security posture: eliminate shared secrets from exportable definitions; least-privilege
+  (unused Graph `User.Read` and provider secret left untouched, not expanded); rotate leaked
+  credentials.
+
+### OPEN GATES
+1. ~~Gate 1 (SessionId placeholder)~~ — closed Sprint 2.
+2. ~~Gate 2 (function key → managed identity)~~ — **CLOSED 2026-07-15 (this entry).**
+
+### Next (Sprint 5 — packaging for publication)
+- Export the playbook ARM/Logic App definition to the repo — now safe (no key in URI), but
+  scan the export: no `?code=` remnant, and never commit the
+  `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET` *value* (the auto-created, unused provider
+  secret).
+- Docs pass, figures, demo video; then public GitHub publish of the full arc
+  (use → defend → analyze → detect → respond).
+- Optional (from the race finding): read incident→alert linkage from the ARM API
+  (immediately consistent) to drop the `SecurityIncident` 77s lag from the critical path.

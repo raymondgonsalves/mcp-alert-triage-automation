@@ -9,7 +9,7 @@ and either auto-close with an explanation or escalate with the evidence assemble
 bounded LLM writes a plain-English incident summary; all decisions are made by
 deterministic code, never the model.
 
->> **Status:** Sprints 1–4 complete — the arc is closed. A detection incident triggers an automation rule → Logic App playbook → Azure Function (managed identity) that reconstructs the SessionId, gathers per-session facts, applies a deterministic recipient-aware severity model, has a **bounded LLM narrate** that verdict in plain English, and writes the labeled pre-assessment back to the incident — fully autonomously, zero human intervention. Both LLM paths are proven against real conditions (real narration, and graceful degradation against a real API failure), and a real commit-latency race discovered during the first autonomous run was measured and fixed. See `docs/DAILY_LOG.md` for the build record and `docs/FINDING_alert_commit_race.md` for the race analysis.
+>> **Status:** Sprints 1–4 complete — the arc is closed. A detection incident triggers an automation rule → Logic App playbook → Azure Function (managed identity) that reconstructs the SessionId, gathers per-session facts, applies a deterministic recipient-aware severity model, has a **bounded LLM narrate** that verdict in plain English, and writes the labeled pre-assessment back to the incident — fully autonomously, zero human intervention. Both LLM paths are proven against real conditions (real narration, and graceful degradation against a real API failure), and a real commit-latency race discovered during the first autonomous run was measured and fixed. See `docs/DAILY_LOG.md` for the build record and `docs/FINDING_alert_commit_race.md` for the race analysis. **Gate 2 (playbook→Function auth) is closed** — the hop is now credential-free (managed identity / Entra), verified by a real autonomous run; see `docs/GATE2_managed_identity_swap.md`.
 
 ## The portfolio arc
 
@@ -49,16 +49,27 @@ the severity or trigger an action.
 | 2 | Deterministic session reconstruction (incident → alert → SessionId, server-side KQL) | Complete & verified |
 | 3 | Deterministic recipient-aware scoring (RealizedBreach → Critical) | Complete & verified |
 | 4 | Bounded LLM narrator (explains the deterministic verdict; never decides) + commit-latency race fix | Complete & verified |
-| 5 | Docs, figures, demo video; close Gate 2; public publish | Next |
+| 5 | Docs, figures, demo video; export playbook definition; public publish | Next |
 
-## Open gates (must close before the noted milestone)
+**Gate 2 (playbook→Function auth) — CLOSED 2026-07-15.** The playbook→Function hop no longer
+uses a function key; it authenticates by managed identity (Microsoft Entra / Easy Auth). The
+exposed key was rotated and confirmed dead. See `docs/GATE2_managed_identity_swap.md`.
 
-> **⚠ Gate — before any public GitHub publish of the playbook definition:**
-> The playbook currently calls the Function using a **function key** (a stored secret).
-> This must be swapped to **managed-identity-to-Function auth** (Azure AD / Easy Auth) and
-> the key removed **before** the playbook's ARM/Logic App definition is exported to this repo.
-> A committed playbook definition must never contain the key. The playbook stays cloud-only
-> until this swap is done.
+## Open gates
+
+> **✓ Gate 2 — CLOSED 2026-07-15 — playbook→Function auth is now credential-free.**
+> The playbook previously called the Function with a **function key** in the URI (`?code=`),
+> which would have published the secret if the playbook definition were exported. This was
+> swapped to **managed-identity auth** (Microsoft Entra / Easy Auth): the playbook presents
+> its managed identity, the Function validates the token and rejects everything else with
+> 401, and the function key was rotated (the old value now returns 401). Verified by a real
+> autonomous run (incident #22, key-free). See `docs/GATE2_managed_identity_swap.md`.
+>
+> **Remaining before publishing the playbook definition (Sprint 5):** exporting the ARM/Logic
+> App definition to this repo is now safe (no key in the URI), but the export must still be
+> scanned to confirm no `?code=` remnant and that the auto-created
+> `MICROSOFT_PROVIDER_AUTHENTICATION_SECRET` app-setting *value* is never committed (the
+> setting name is harmless; the value must not be exported).
 
 
 ## Verifying the pipeline
