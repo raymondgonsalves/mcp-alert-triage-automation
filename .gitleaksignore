@@ -1,0 +1,4 @@
+# x-ms-client-request-id correlation GUIDs in captured telemetry — not credentials.
+# Client-generated request-tracing IDs; grant no access. Reviewed 2026-07-16.
+f9bd03f6745813eece84dbe0c43a058ed7d096d9:docs/figures/figure_16_sprint4_failsafe_graceful_degradation.txt:generic-api-key:31
+f9bd03f6745813eece84dbe0c43a058ed7d096d9:docs/figures/figure_16_sprint4_failsafe_graceful_degradation.txt:generic-api-key:54
