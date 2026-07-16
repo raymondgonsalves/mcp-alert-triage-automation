@@ -610,8 +610,15 @@ would risk clobbering the v2 provider config — used the portal for v2 auth fie
 - Optional (from the race finding): read incident→alert linkage from the ARM API
   (immediately consistent) to drop the `SecurityIncident` 77s lag from the critical path.
 
-### In-flight (resume 2026-07-15+): playbook PLACEHOLDER cleanup
-- Removing dead `"sessionId": "PLACEHOLDER-chain-test"` from playbook HTTP body (Function ignores it — reconstructs session itself; confirmed no body read of sessionId).
-- STEPS LEFT: (1) portal edit body to just `incidentArmId` [no trailing comma], Save+Publish; (2) re-run forwarder to verify pipeline still writes scored+narrated comment; (3) re-export `playbook/pb-mcp-triage-skeleton.definition.json`; (4) re-scan (no code=, MI auth present, no secrets); (5) commit `docs(sprint5): remove vestigial sessionId placeholder from playbook body`.
-- Then Sprint 5 remaining: docs polish, optional demo video, public publish.
-  - NOTE: playbook/pb-mcp-triage-skeleton.definition.json already exported (PLACEHOLDER version, untracked) — re-export clean and commit once on resume.
+### In-flight (resume 2026-07-16+): SETUP.md (reproducibility notes)
+- Next task: write SETUP.md — prerequisites, resources needed (Sentinel workspace, Function App, Logic App), deploy steps, and an honest split of what's lab-specific (four detection rules, specific DCR/DCE) vs. portable. Last Phase B item.
+- Sprint 5 remaining after SETUP.md: optional demo video (approach decided — continuous take, autonomy beat, compress labeled 120s delay), then public publish + surface-link updates + capstone post.
+
+#### Closed 2026-07-16 (this block's predecessor: playbook PLACEHOLDER cleanup + Sprint 5 gating)
+- Placeholder `sessionId` removed from live playbook, published, and verified gone from the live ARM definition via `az logic workflow show ... | grep -i sessionid` (empty). Draft/Active badge persisted cosmetically — grep against ARM was the authoritative check.
+- Playbook definition first-committed as the single file `playbooks/pb-mcp-triage-skeleton.definition.json` (1819 bytes; earlier stray `playbook/` dir and duplicate `.json` removed). Acceptance-tested: valid JSON, `incidentArmId` present, no `sessionId`.
+- Secret gates passed: working-tree grep triaged clean; full-history `gitleaks` = "no leaks found" after two `generic-api-key` false positives (x-ms-client-request-id correlation GUIDs in figure_16) were suppressed via fingerprint-scoped `.gitleaksignore`. Rotated function key confirmed never committed to history.
+- `.gitignore` verified (local.settings.json, .venv/, __pycache__/, *.env all covered); `local.settings.json.example` template content-verified as placeholder-only.
+- Identifiers redacted-forward (tenant/client/principal IDs → placeholders); history left intact by decision (non-secret object IDs); rationale documented in README Security section. Post-scrub gitleaks re-run clean.
+- Architecture diagrams (hero `architecture_overview.svg` + detailed `function_app_triage_flow.svg`) color-matched and placed in docs/figures/.
+- README consolidated (diagrams wired in, "Open gates" removed, Gate 2 collapsed, Security + identifier note added, on-ramp expanded). Both pre-commit checks passed: internal docs/*.md links resolve; detection-pack cross-link confirmed Public + clean URL via Edge InPrivate.
