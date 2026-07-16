@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "actions": {
+    "Delay": {
+      "inputs": {
+        "interval": {
+          "count": 120,
+          "unit": "Second"
+        }
+      },
+      "runAfter": {},
+      "type": "Wait"
+    },
+    "For_each": {
+      "actions": {
+        "HTTP": {
+          "inputs": {
+            "authentication": {
+              "audience": "api://46439dbd-d726-432c-afcc-0488700ab7e3",
+              "type": "ManagedServiceIdentity"
+            },
+            "body": {
+              "incidentArmId": "@triggerBody()?['object']?['id']"
+            },
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "method": "POST",
+            "uri": "https://func-mcp-triage-lab-rg.azurewebsites.net/api/triage"
+          },
+          "runtimeConfiguration": {
+            "contentTransfer": {
+              "transferMode": "Chunked"
+            }
+          },
+          "type": "Http"
+        }
+      },
+      "foreach": "@triggerBody()?['object']?['properties']?['Alerts']",
+      "runAfter": {
+        "Delay": [
+          "Succeeded"
+        ]
+      },
+      "type": "Foreach"
+    }
+  },
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "notes": {}
+  },
+  "outputs": {},
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "Microsoft_Sentinel_incident": {
+      "inputs": {
+        "body": {
+          "callback_url": "@{listCallbackUrl()}"
+        },
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+          }
+        },
+        "path": "/incident-creation"
+      },
+      "type": "ApiConnectionWebhook"
+    }
+  }
+}
