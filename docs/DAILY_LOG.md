@@ -610,9 +610,21 @@ would risk clobbering the v2 provider config — used the portal for v2 auth fie
 - Optional (from the race finding): read incident→alert linkage from the ARM API
   (immediately consistent) to drop the `SecurityIncident` 77s lag from the critical path.
 
-### In-flight (resume 2026-07-16+): SETUP.md (reproducibility notes)
-- Next task: write SETUP.md — prerequisites, resources needed (Sentinel workspace, Function App, Logic App), deploy steps, and an honest split of what's lab-specific (four detection rules, specific DCR/DCE) vs. portable. Last Phase B item.
-- Sprint 5 remaining after SETUP.md: optional demo video (approach decided — continuous take, autonomy beat, compress labeled 120s delay), then public publish + surface-link updates + capstone post.
+### In-flight (resume 2026-07-17+): demo video, then publish
+- Next: record demo video — continuous take, autonomy as the hero beat, compress the labeled 120s delay (approach decided). Then publish: flip repo public, update LinkedIn/Notion/résumé links, capstone arc-complete post.
+- Phase B (README + diagrams + SETUP.md) is complete. Sprint 5 remaining is video + publish only.
+
+#### Closed 2026-07-17: SETUP.md + three issues it surfaced
+- Wrote `SETUP.md` (standalone reproducibility guide, linked from README on-ramp): prerequisites, provisioning, deploy steps, RBAC grants (Log Analytics Reader + Microsoft Sentinel Responder on the Function's managed identity), a "Code you must edit" section (WORKSPACE_ID / LEGIT_RECIPIENTS / _LLM_MODEL are code constants, not app settings), lab-specific vs. portable split, verification, troubleshooting.
+- Confirmed the only runtime env var is `ANTHROPIC_API_KEY` (`function_app.py:355`); everything else is a code constant. Graceful degradation verified: an unset key raises inside the Anthropic call, is caught by the Layer-5 fail-safe in `narrate_assessment`, deterministic verdict still writes.
+- Writing the guide flushed out three real issues, all fixed:
+  - **Hardcoded workspace GUID** at `function_app.py:22` — missed by the earlier redaction pass, which scoped its greps to `.md`/`.txt`/`.json` and never scanned source. Redacted to `<placeholder>` (commit `4042587`). Source-wide GUID/subscription/hostname scan otherwise clean. History left intact per the documented scrub-forward stance (workspace ID = non-credential identifier, same category as the tenant/client IDs).
+  - **`test_scorer.py` broken as committed** — it string-extracted `score_session` from `function_app_sprint3.py` (renamed to `function_app.py` during consolidation → FileNotFoundError), and the extraction boundaries (`def score_session` … `def _build_comment`) were also stale after the file reorg (narration code now sits between them).
+  - **`function_app.py` not import-safe** — `DefaultAzureCredential()` and `LogsQueryClient()` were instantiated at module import (lines 29–30), so a plain `import function_app` required Azure creds. This is why the original test used the fragile extract-and-exec workaround.
+- Fixes (committed together as `test(scorer): import score_session directly; make data-plane client lazy for import-safety`):
+  - Made the data-plane client **lazy-init** via `_get_logs_client()`; both `query_workspace` call sites updated. Module now imports with no Azure creds (verified: client/credential both `None` at import).
+  - **Rewrote `test_scorer.py`** to import `score_session` directly (durable against future reorg) as a **zero-dependency** plain-assert runner — no pytest (requirements.txt has none), runs `python3 test_scorer.py`, exit-coded, all 6 cases across every severity tier pass.
+- Lesson banked: **a redaction pass is only as complete as its file-type scope.** "Redacted" was claimed after scanning md/txt/json, but `.py` source held an un-scrubbed identifier. The claim was broader than the scan; the gap was in the file type we skipped.
 
 #### Closed 2026-07-16 (this block's predecessor: playbook PLACEHOLDER cleanup + Sprint 5 gating)
 - Placeholder `sessionId` removed from live playbook, published, and verified gone from the live ARM definition via `az logic workflow show ... | grep -i sessionid` (empty). Draft/Active badge persisted cosmetically — grep against ARM was the authoritative check.
