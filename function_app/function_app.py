@@ -19,7 +19,7 @@ ARM_BASE = "https://management.azure.com"
 API_VERSION = "2023-11-01"
 
 # --- Log Analytics workspace (data plane) — used to reconstruct + score the session ---
-WORKSPACE_ID = "d0f3187b-ec35-4281-9cb6-52a34418236a"
+WORKSPACE_ID = "<your-log-analytics-workspace-id>"  # set to your workspace GUID
 
 # The legitimate recipient(s). A send to anything NOT on this allowlist is treated
 # as a redirect. Denylist (== attacker) works for the lab, but an allowlist is the
