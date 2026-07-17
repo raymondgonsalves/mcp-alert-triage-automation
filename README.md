@@ -62,6 +62,7 @@ Where to start, depending on what you want to know:
 - **How the credential-free auth works** — [`docs/GATE2_managed_identity_swap.md`](docs/GATE2_managed_identity_swap.md), the function-key → managed-identity swap.
 - **The design** — the [interface contract](docs/INTERFACE_CONTRACT.md) and the architecture diagrams above.
 - **The playbook itself** — [`playbooks/pb-mcp-triage-skeleton.definition.json`](playbooks/pb-mcp-triage-skeleton.definition.json), the exported Logic App definition.
+- **How to reproduce it** — [`SETUP.md`](SETUP.md), prerequisites, deploy steps, and an honest lab-specific vs. portable split.
 - **Evidence** — [`docs/figures/`](docs/figures/), the captured runs and portal states referenced throughout the log.
 
 ## Build status by sprint
