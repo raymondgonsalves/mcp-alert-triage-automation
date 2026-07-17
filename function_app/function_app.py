@@ -26,8 +26,18 @@ WORKSPACE_ID = "<your-log-analytics-workspace-id>"  # set to your workspace GUID
 # stronger posture: it catches UNKNOWN-bad recipients, not just the one known-bad.
 LEGIT_RECIPIENTS = ("alice@mail.com",)
 
-_credential = DefaultAzureCredential()
-_logs_client = LogsQueryClient(_credential)
+_credential = None
+_logs_client = None
+
+
+def _get_logs_client() -> LogsQueryClient:
+    """Lazily build the Log Analytics client on first use, so importing this
+    module (e.g. for unit tests) doesn't require Azure credentials."""
+    global _credential, _logs_client
+    if _logs_client is None:
+        _credential = DefaultAzureCredential()
+        _logs_client = LogsQueryClient(_credential)
+    return _logs_client
 
 # --- Sprint 4: bounded LLM narrator config ---
 # The LLM NARRATES the already-decided severity; it never scores, decides, or acts.
@@ -102,7 +112,7 @@ def _attempt_reconstruct_session_id(incident_guid: str) -> str | None:
         | take 1
     """
     try:
-        response = _logs_client.query_workspace(
+        response = _get_logs_client().query_workspace(
             workspace_id=WORKSPACE_ID, query=query, timespan=None
         )
     except Exception:  # noqa: BLE001
@@ -187,7 +197,7 @@ def _gather_session_facts(session_id: str) -> dict | None:
         | take 1
     """
     try:
-        response = _logs_client.query_workspace(
+        response = _get_logs_client().query_workspace(
             workspace_id=WORKSPACE_ID, query=query, timespan=None
         )
     except Exception:  # noqa: BLE001

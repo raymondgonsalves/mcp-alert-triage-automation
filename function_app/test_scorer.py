@@ -1,57 +1,81 @@
-# Import just the pure scoring function by executing the module's function definition.
-# (We isolate score_session so we can test it without Azure imports.)
-import sys, types
+"""Unit tests for the deterministic scorer (score_session).
 
-# Extract score_session source and exec it standalone (avoids azure imports for the test).
-src = open("function_app_sprint3.py").read()
-start = src.index("def score_session")
-end = src.index("def _build_comment")
-score_src = src[start:end]
-ns = {}
-exec(score_src, ns)
-score_session = ns["score_session"]
+Zero-dependency: imports score_session directly from function_app (import-safe via
+lazy client init) and runs plain assertions — no pytest, no Azure credentials.
+Only the packages in requirements.txt are needed.
+
+Run:  python3 test_scorer.py     (exit 0 = all pass, exit 1 = a failure)
+"""
+import sys
+
+from function_app import score_session
+
 
 def facts(ingestion=0, execution=False, breach=False, sent=0, total=0, rules=None, recips=None):
+    """Build a session-facts dict with sensible defaults; override per case."""
     return {
-        "session_id": "test", "ingestion_signals": ingestion, "execution_fired": execution,
-        "realized_breach": breach, "sent_to_attacker": sent, "total_sends": total,
-        "rules_fired": rules or [], "recipients": recips or [],
+        "session_id": "test",
+        "ingestion_signals": ingestion,
+        "execution_fired": execution,
+        "realized_breach": breach,
+        "sent_to_attacker": sent,
+        "total_sends": total,
+        "rules_fired": rules or [],
+        "recipients": recips or [],
     }
 
-cases = [
-    # (name, facts, expected_severity)
+
+# (name, facts, expected_severity)
+CASES = [
     ("Realized breach (ollmcp c7df4d04)",
      facts(ingestion=0, execution=True, breach=True, sent=4, total=8,
-           rules=["...redirected to attacker..."], recips=["alice@mail.com","attacker@pwnd.com"]),
+           rules=["...redirected to attacker..."], recips=["alice@mail.com", "attacker@pwnd.com"]),
      "Critical"),
+
     ("Corroborated ingestion, MEDIUM (Claude 885f51f0)",
      facts(ingestion=2, execution=False, breach=False, total=1,
-           rules=["...drift...","...cross-tool..."], recips=["alice@mail.com"]),
+           rules=["...drift...", "...cross-tool..."], recips=["alice@mail.com"]),
      "Medium"),
+
     ("Single ingestion, LOW (Claude 9dc4131a)",
      facts(ingestion=1, execution=False, breach=False, total=1,
            rules=["...poisoned..."], recips=["alice@mail.com"]),
      "Low"),
+
     ("Execution detected but legit recipient -> HIGH (attempted/defended)",
      facts(ingestion=0, execution=True, breach=False, sent=0, total=2,
            rules=["...redirected..."], recips=["alice@mail.com"]),
      "High"),
+
     ("UNTESTED-IN-REAL-DATA branch: corroborated ingestion + realized breach -> CRITICAL",
      facts(ingestion=3, execution=True, breach=True, sent=2, total=5,
-           rules=["...poisoned...","...cross-tool...","...drift...","...redirected..."],
-           recips=["alice@mail.com","attacker@pwnd.com"]),
+           rules=["...poisoned...", "...cross-tool...", "...drift...", "...redirected..."],
+           recips=["alice@mail.com", "attacker@pwnd.com"]),
      "Critical"),
+
     ("Nothing scored -> Informational",
      facts(ingestion=0, execution=False, breach=False),
      "Informational"),
 ]
 
-all_pass = True
-for name, f, expected in cases:
-    sev, reason = score_session(f)
-    ok = sev == expected
-    all_pass = all_pass and ok
-    print(f"[{'PASS' if ok else 'FAIL'}] {name}")
-    print(f"        -> {sev}: {reason[:90]}...")
-print()
-print("ALL BRANCHES PASS" if all_pass else "SOME BRANCHES FAILED")
+
+def run():
+    passed = 0
+    failed = 0
+    for name, session_facts, expected in CASES:
+        severity, reasoning = score_session(session_facts)
+        ok = (severity == expected
+              and isinstance(reasoning, str) and bool(reasoning))
+        if ok:
+            passed += 1
+            print(f"PASS  {name}  ->  {severity}")
+        else:
+            failed += 1
+            print(f"FAIL  {name}  ->  expected {expected!r}, got {severity!r} "
+                  f"(reasoning={'ok' if isinstance(reasoning, str) and reasoning else 'MISSING'})")
+    print(f"\n{passed} passed, {failed} failed")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(run())
